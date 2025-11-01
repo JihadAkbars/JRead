@@ -228,9 +228,7 @@ const AuthModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }
 const Header = () => {
   const { isAuthenticated, user, logout, showAuthModal } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    return localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  });
+  const [isDarkMode, setIsDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
@@ -256,15 +254,8 @@ const Header = () => {
 
 
   const toggleTheme = () => {
-    const newIsDarkMode = !isDarkMode;
-    setIsDarkMode(newIsDarkMode);
-    if (newIsDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.theme = 'dark';
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.theme = 'light';
-    }
+    setIsDarkMode(!isDarkMode);
+    document.documentElement.classList.toggle('dark');
   };
   
   const handleSearchChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -584,15 +575,8 @@ const ReaderPage = () => {
     }, [chapterMenuRef]);
     
     const toggleTheme = () => {
-        const newIsDarkMode = !isDarkMode;
-        setIsDarkMode(newIsDarkMode);
-        if (newIsDarkMode) {
-            document.documentElement.classList.add('dark');
-            localStorage.theme = 'dark';
-        } else {
-            document.documentElement.classList.remove('dark');
-            localStorage.theme = 'light';
-        }
+        setIsDarkMode(!isDarkMode);
+        document.documentElement.classList.toggle('dark');
     };
 
     const changeFontSize = (delta: number) => {
@@ -1653,18 +1637,12 @@ const App = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Apply theme on initial load
-    if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-
     if (!supabase) {
       setLoading(false);
       return;
     }
 
+    setLoading(true);
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       try {
         if (session?.user) {

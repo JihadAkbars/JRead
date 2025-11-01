@@ -56,3 +56,18 @@ export interface Comment {
   createdAt: Date;
   replies?: Comment[];
 }
+
+export type ChangelogChangeType = 'NEW' | 'IMPROVED' | 'FIXED';
+
+export interface ChangelogChange {
+  type: ChangelogChangeType;
+  text: string;
+}
+
+export interface ChangelogEntry {
+  id: string;
+  version: string;
+  date: string; // ISO date string
+  changes: ChangelogChange[];
+  created_at?: Date;
+}

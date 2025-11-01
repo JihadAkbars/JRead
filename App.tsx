@@ -1029,104 +1029,104 @@ const AdminLoginPage = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
     );
 };
 
-const AdminBackendSetup = () => {
-    const [copySuccess, setCopySuccess] = useState('');
+const AdminBackendSetup = ({ capabilities }: { capabilities: { canDeleteUsers: boolean, canDeleteNovels: boolean } | null }) => {
+    const [copySuccess, setCopySuccess] = useState(false);
 
-    const novelSql = `CREATE OR REPLACE FUNCTION admin_delete_novel(novel_id_to_delete uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  caller_role text;
+    const fullSqlScript = `
+-- Function 1/3: Allows admins to delete any novel
+CREATE OR REPLACE FUNCTION admin_delete_novel(novel_id_to_delete uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE caller_role text;
 BEGIN
-  -- Check if the user calling this function is an ADMIN
   SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
-
   IF caller_role = 'ADMIN' THEN
-    -- If they are an admin, proceed with deleting the novel
     DELETE FROM public.novels WHERE id = novel_id_to_delete;
   ELSE
-    -- Otherwise, raise an exception
     RAISE EXCEPTION 'Permission denied: You must be an admin to delete novels.';
   END IF;
 END;
 $$;
+GRANT EXECUTE ON FUNCTION public.admin_delete_novel(uuid) TO authenticated;
 
-GRANT EXECUTE ON FUNCTION public.admin_delete_novel(uuid) TO authenticated;`;
-
-    const userSql = `CREATE OR REPLACE FUNCTION admin_delete_user(user_id_to_delete uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  caller_role text;
+-- Function 2/3: Allows admins to delete any user
+CREATE OR REPLACE FUNCTION admin_delete_user(user_id_to_delete uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE caller_role text;
 BEGIN
-  -- Check if the user calling this function is an ADMIN
   SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
-
   IF caller_role = 'ADMIN' THEN
-    -- If they are an admin, proceed with deleting the target user from the auth schema
     DELETE FROM auth.users WHERE id = user_id_to_delete;
   ELSE
-    -- Otherwise, raise an exception
     RAISE EXCEPTION 'Permission denied: You must be an admin to delete users.';
   END IF;
 END;
 $$;
+GRANT EXECUTE ON FUNCTION public.admin_delete_user(uuid) TO authenticated;
 
-GRANT EXECUTE ON FUNCTION public.admin_delete_user(uuid) TO authenticated;`;
+-- Function 3/3: Checks if the admin functions are installed
+CREATE OR REPLACE FUNCTION check_admin_capabilities()
+RETURNS json LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN json_build_object(
+    'can_delete_users', EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'admin_delete_user'),
+    'can_delete_novels', EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'admin_delete_novel')
+  );
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.check_admin_capabilities() TO authenticated;
+`;
 
-    const copyToClipboard = (sqlToCopy: string, type: string) => {
-        navigator.clipboard.writeText(sqlToCopy).then(() => {
-            setCopySuccess(type);
-            setTimeout(() => setCopySuccess(''), 2000);
-        }, () => {
-            setCopySuccess('failed');
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(fullSqlScript.trim()).then(() => {
+            setCopySuccess(true);
+            setTimeout(() => setCopySuccess(false), 2500);
         });
+    };
+    
+    const StatusIndicator = ({ status }: { status: boolean | undefined }) => {
+        if (status === undefined) return <span className="text-sm font-semibold text-gray-500 animate-pulse">Checking...</span>;
+        return status ? 
+            <span className="text-sm font-semibold text-green-600 dark:text-green-400">✅ Ready</span> : 
+            <span className="text-sm font-semibold text-red-600 dark:text-red-400">❌ Setup Required</span>;
     };
 
     return (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-6 rounded-lg mb-8">
-            <h2 className="text-2xl font-bold text-yellow-800 dark:text-yellow-200">Backend Function Setup</h2>
-            <p className="mt-2 text-yellow-700 dark:text-yellow-300">
-                For full admin functionality (deleting users or novels), you must add two special functions to your Supabase database. Please copy the SQL code for each function below and run it in your project's SQL Editor.
+        <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-400 p-6 rounded-lg mb-8">
+            <h2 className="text-2xl font-bold text-blue-800 dark:text-blue-200">Admin Feature Status</h2>
+            <p className="mt-2 text-blue-700 dark:text-blue-300">
+                This dashboard relies on special database functions for admin actions. The status of each required function is shown below. If a function is missing, some actions will be disabled.
             </p>
-            <a href="https://supabase.com/dashboard/project/_/sql" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 mb-6 text-primary font-semibold hover:underline">
-                Open Supabase SQL Editor &rarr;
-            </a>
             
-            <div className="space-y-6">
-                {/* Novel Deletion Function */}
-                <div className="bg-light-surface dark:bg-dark-surface p-4 rounded-md shadow">
-                    <h3 className="font-semibold text-lg">1. Function: `admin_delete_novel`</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 mb-3">Allows admins to delete any novel.</p>
-                    <div className="relative bg-gray-100 dark:bg-gray-900 p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto">
-                        <pre className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{novelSql}</pre>
-                    </div>
-                     <Button onClick={() => copyToClipboard(novelSql, 'novel')} variant="secondary" className="!px-3 !py-1 text-sm mt-3">
-                        {copySuccess === 'novel' ? 'Copied!' : 'Copy SQL for Novel Deletion'}
-                     </Button>
+            <div className="my-4 space-y-2">
+                <div className="flex justify-between items-center p-2 bg-light-surface/50 dark:bg-dark-surface/50 rounded-md">
+                    <span className="font-semibold">User Deletion Power:</span>
+                    <StatusIndicator status={capabilities?.canDeleteUsers} />
                 </div>
-                
-                {/* User Deletion Function */}
-                 <div className="bg-light-surface dark:bg-dark-surface p-4 rounded-md shadow">
-                    <h3 className="font-semibold text-lg">2. Function: `admin_delete_user`</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 mb-3">Allows admins to delete any user.</p>
-                    <div className="relative bg-gray-100 dark:bg-gray-900 p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto">
-                        <pre className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{userSql}</pre>
-                    </div>
-                     <Button onClick={() => copyToClipboard(userSql, 'user')} variant="secondary" className="!px-3 !py-1 text-sm mt-3">
-                        {copySuccess === 'user' ? 'Copied!' : 'Copy SQL for User Deletion'}
-                     </Button>
+                <div className="flex justify-between items-center p-2 bg-light-surface/50 dark:bg-dark-surface/50 rounded-md">
+                    <span className="font-semibold">Novel Deletion Power:</span>
+                    <StatusIndicator status={capabilities?.canDeleteNovels} />
                 </div>
             </div>
-             <p className="mt-6 text-sm text-yellow-700 dark:text-yellow-300">
-                <strong>Instructions:</strong> Go to the SQL Editor, paste the first script, click "RUN", wait for success. Then, paste the second script, click "RUN". Once both are done, your admin actions will work.
-            </p>
+
+            {(!capabilities || !capabilities.canDeleteNovels || !capabilities.canDeleteUsers) && (
+                <div>
+                     <p className="mt-4 text-blue-700 dark:text-blue-300">
+                        To enable all features, copy the single SQL script below and run it in your project's SQL Editor. This will set up all necessary functions at once.
+                    </p>
+                    <a href="https://supabase.com/dashboard/project/_/sql" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 mb-4 text-primary font-semibold hover:underline">
+                        Open Supabase SQL Editor &rarr;
+                    </a>
+                    <div className="bg-light-surface dark:bg-dark-surface p-4 rounded-md shadow">
+                        <h3 className="font-semibold text-lg">Admin Functions Setup Script</h3>
+                         <div className="relative bg-gray-100 dark:bg-gray-900 p-3 mt-2 rounded-md font-mono text-xs max-h-48 overflow-y-auto">
+                            <pre className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{fullSqlScript.trim()}</pre>
+                        </div>
+                         <Button onClick={copyToClipboard} variant="secondary" className="!px-3 !py-1 text-sm mt-3">
+                            {copySuccess ? 'Copied to Clipboard!' : 'Copy Full Script'}
+                         </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -1137,17 +1137,21 @@ const AdminDashboard = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [error, setError] = useState('');
-
-    const fetchData = async () => {
-        setIsLoading(true);
-        const usersData = await ApiService.getUsers();
-        const novelsData = await ApiService.getNovels();
-        setUsers(usersData);
-        setNovels(novelsData);
-        setIsLoading(false);
-    };
+    const [capabilities, setCapabilities] = useState<{ canDeleteUsers: boolean, canDeleteNovels: boolean } | null>(null);
 
     useEffect(() => {
+        const fetchData = async () => {
+            setIsLoading(true);
+            const [usersData, novelsData, caps] = await Promise.all([
+                ApiService.getUsers(),
+                ApiService.getNovels(),
+                ApiService.checkAdminCapabilities()
+            ]);
+            setUsers(usersData);
+            setNovels(novelsData);
+            setCapabilities(caps);
+            setIsLoading(false);
+        };
         fetchData();
     }, []);
 
@@ -1161,7 +1165,7 @@ const AdminDashboard = () => {
             } else if (error) {
                 const lowerCaseMessage = error.message?.toLowerCase() || '';
                 if (error.code === '42883' || lowerCaseMessage.includes('does not exist')) {
-                    setError("Action failed: The database function 'admin_delete_user' is missing. Please follow the \"Backend Function Setup\" guide at the top of this page.");
+                    setError("Action failed: The database function 'admin_delete_user' seems to be missing. Refresh the page to update the status check.");
                 } else if (lowerCaseMessage.includes('permission denied')) {
                      setError(`Failed to delete user: Permission denied. The backend function reported that you do not have admin rights.`);
                 } else {
@@ -1183,7 +1187,7 @@ const AdminDashboard = () => {
             } else if (error) {
                  const lowerCaseMessage = error.message?.toLowerCase() || '';
                 if (error.code === '42883' || lowerCaseMessage.includes('does not exist')) {
-                    setError("Action failed: The database function 'admin_delete_novel' is missing. Please follow the \"Backend Function Setup\" guide at the top of this page.");
+                    setError("Action failed: The database function 'admin_delete_novel' seems to be missing. Refresh the page to update the status check.");
                 } else if (lowerCaseMessage.includes('permission denied')) {
                      setError(`Failed to delete novel: Permission denied. The backend function reported that you do not have admin rights.`);
                 } else {
@@ -1207,7 +1211,7 @@ const AdminDashboard = () => {
             <div className="container mx-auto px-4 py-8">
                 <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
                 
-                <AdminBackendSetup />
+                <AdminBackendSetup capabilities={capabilities} />
 
                 {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">{error}</div>}
                 
@@ -1224,7 +1228,14 @@ const AdminDashboard = () => {
                                     <div className="flex gap-1">
                                         <Button variant="ghost" onClick={() => setEditingUser(user)} title="Edit User Role"><EditIcon className="w-5 h-5"/></Button>
                                         {user.role !== UserRole.ADMIN && (
-                                           <Button variant="ghost" onClick={() => handleDeleteUser(user.id, user.username)} title="Delete User"><TrashIcon className="w-5 h-5 text-red-500"/></Button>
+                                           <Button 
+                                             variant="ghost" 
+                                             onClick={() => handleDeleteUser(user.id, user.username)} 
+                                             title={capabilities?.canDeleteUsers ? "Delete User" : "User deletion feature not enabled. See status guide above."}
+                                             disabled={!capabilities?.canDeleteUsers}
+                                           >
+                                                <TrashIcon className="w-5 h-5 text-red-500"/>
+                                           </Button>
                                         )}
                                     </div>
                                 </div>
@@ -1240,7 +1251,14 @@ const AdminDashboard = () => {
                                         <p className="font-semibold truncate max-w-xs">{novel.title}</p>
                                         <p className="text-sm text-gray-500">by {novel.authorName}</p>
                                     </div>
-                                    <Button variant="ghost" onClick={() => handleDeleteNovel(novel.id, novel.title)} title="Delete Novel"><TrashIcon className="w-5 h-5 text-red-500"/></Button>
+                                    <Button 
+                                      variant="ghost" 
+                                      onClick={() => handleDeleteNovel(novel.id, novel.title)} 
+                                      title={capabilities?.canDeleteNovels ? "Delete Novel" : "Novel deletion feature not enabled. See status guide above."}
+                                      disabled={!capabilities?.canDeleteNovels}
+                                    >
+                                        <TrashIcon className="w-5 h-5 text-red-500"/>
+                                    </Button>
                                 </div>
                             ))}
                         </div>

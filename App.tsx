@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -1028,10 +1029,8 @@ const AdminLoginPage = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
     );
 };
 
-const AdminSetupInstructions = ({ type, onClose }: { type: 'novel' | 'user', onClose: () => void }) => {
+const AdminBackendSetup = () => {
     const [copySuccess, setCopySuccess] = useState('');
-    const functionName = type === 'novel' ? 'admin_delete_novel' : 'admin_delete_user';
-    const action = type === 'novel' ? 'delete any novel' : 'delete any user';
 
     const novelSql = `CREATE OR REPLACE FUNCTION admin_delete_novel(novel_id_to_delete uuid)
 RETURNS void
@@ -1081,54 +1080,63 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.admin_delete_user(uuid) TO authenticated;`;
 
-    const sqlToCopy = type === 'novel' ? novelSql : userSql;
-
-    const copyToClipboard = () => {
+    const copyToClipboard = (sqlToCopy: string, type: string) => {
         navigator.clipboard.writeText(sqlToCopy).then(() => {
-            setCopySuccess('Copied!');
+            setCopySuccess(type);
             setTimeout(() => setCopySuccess(''), 2000);
         }, () => {
-            setCopySuccess('Failed to copy.');
+            setCopySuccess('failed');
         });
     };
 
     return (
-        <Modal isOpen={true} onClose={onClose}>
-            <div className="max-w-xl">
-                 <h2 className="text-2xl font-bold mb-2 text-yellow-500">Backend Setup Required</h2>
-                 <p className="mb-4 text-gray-600 dark:text-gray-400">
-                     The <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded text-sm">{functionName}</code> function is missing in your database. This special function is required for admins to {action}.
-                 </p>
-                 <div className="space-y-3 text-sm">
-                    <p><strong>1. Copy the SQL code below.</strong></p>
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-6 rounded-lg mb-8">
+            <h2 className="text-2xl font-bold text-yellow-800 dark:text-yellow-200">Backend Function Setup</h2>
+            <p className="mt-2 text-yellow-700 dark:text-yellow-300">
+                For full admin functionality (deleting users or novels), you must add two special functions to your Supabase database. Please copy the SQL code for each function below and run it in your project's SQL Editor.
+            </p>
+            <a href="https://supabase.com/dashboard/project/_/sql" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 mb-6 text-primary font-semibold hover:underline">
+                Open Supabase SQL Editor &rarr;
+            </a>
+            
+            <div className="space-y-6">
+                {/* Novel Deletion Function */}
+                <div className="bg-light-surface dark:bg-dark-surface p-4 rounded-md shadow">
+                    <h3 className="font-semibold text-lg">1. Function: `admin_delete_novel`</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 mb-3">Allows admins to delete any novel.</p>
                     <div className="relative bg-gray-100 dark:bg-gray-900 p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto">
-                        <pre className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{sqlToCopy}</pre>
-                        <Button onClick={copyToClipboard} variant="ghost" className="!absolute top-2 right-2 !px-2 !py-1 text-xs">
-                           {copySuccess || 'Copy SQL'}
-                        </Button>
+                        <pre className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{novelSql}</pre>
                     </div>
-                    <p><strong>2. Go to your Supabase project's SQL Editor.</strong></p>
-                    <a href="https://supabase.com/dashboard/project/_/sql" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                        Open Supabase SQL Editor &rarr;
-                    </a>
-                    <p><strong>3. Paste the code and click "RUN".</strong></p>
-                    <p>Once the script has successfully run, close this window and try the delete action again.</p>
-                 </div>
-                 <div className="flex justify-end mt-6">
-                    <Button onClick={onClose} variant="primary">Got it, Close</Button>
-                 </div>
+                     <Button onClick={() => copyToClipboard(novelSql, 'novel')} variant="secondary" className="!px-3 !py-1 text-sm mt-3">
+                        {copySuccess === 'novel' ? 'Copied!' : 'Copy SQL for Novel Deletion'}
+                     </Button>
+                </div>
+                
+                {/* User Deletion Function */}
+                 <div className="bg-light-surface dark:bg-dark-surface p-4 rounded-md shadow">
+                    <h3 className="font-semibold text-lg">2. Function: `admin_delete_user`</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 mb-3">Allows admins to delete any user.</p>
+                    <div className="relative bg-gray-100 dark:bg-gray-900 p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto">
+                        <pre className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{userSql}</pre>
+                    </div>
+                     <Button onClick={() => copyToClipboard(userSql, 'user')} variant="secondary" className="!px-3 !py-1 text-sm mt-3">
+                        {copySuccess === 'user' ? 'Copied!' : 'Copy SQL for User Deletion'}
+                     </Button>
+                </div>
             </div>
-        </Modal>
+             <p className="mt-6 text-sm text-yellow-700 dark:text-yellow-300">
+                <strong>Instructions:</strong> Go to the SQL Editor, paste the first script, click "RUN", wait for success. Then, paste the second script, click "RUN". Once both are done, your admin actions will work.
+            </p>
+        </div>
     );
 };
-
 
 const AdminDashboard = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [novels, setNovels] = useState<Novel[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [editingUser, setEditingUser] = useState<User | null>(null);
-    const [setupError, setSetupError] = useState<'novel' | 'user' | null>(null);
+    const [error, setError] = useState('');
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -1142,41 +1150,37 @@ const AdminDashboard = () => {
     useEffect(() => {
         fetchData();
     }, []);
-    
+
     const handleDeleteUser = async (userId: string, username: string) => {
+        setError('');
         if (window.confirm(`Are you sure you want to delete user "${username}"? This action is irreversible.`)) {
             const { success, error } = await ApiService.adminDeleteUser(userId);
             if (success) {
                 setUsers(prev => prev.filter(u => u.id !== userId));
                 alert(`Successfully deleted user "${username}".`);
             } else {
-                const errorMsgLower = error?.message?.toLowerCase() || '';
-                if (errorMsgLower.includes('function admin_delete_user') && errorMsgLower.includes('does not exist')) {
-                    setSetupError('user');
-                } else {
-                    alert(`Failed to delete user "${username}". Check the console for more details.`);
-                }
+                const errorMessage = `Failed to delete user "${username}". Make sure the backend RPC function is set up correctly. Check the console for more details.`;
+                setError(errorMessage);
+                alert(errorMessage);
             }
         }
     };
-    
+
     const handleDeleteNovel = async (novelId: string, title: string) => {
+        setError('');
         if (window.confirm(`Are you sure you want to delete the novel "${title}"?`)) {
             const { success, error } = await ApiService.adminDeleteNovel(novelId);
             if (success) {
                 setNovels(prev => prev.filter(n => n.id !== novelId));
                 alert(`Successfully deleted novel "${title}".`);
             } else {
-                const errorMsgLower = error?.message?.toLowerCase() || '';
-                if (errorMsgLower.includes('function admin_delete_novel') && errorMsgLower.includes('does not exist')) {
-                    setSetupError('novel');
-                } else {
-                    alert(`Failed to delete novel "${title}". Check the console for more details.`);
-                }
+                 const errorMessage = `Failed to delete novel "${title}". Make sure the backend RPC function is set up correctly. Check the console for more details.`;
+                setError(errorMessage);
+                alert(errorMessage);
             }
         }
     };
-    
+
     const handleUpdateUser = (updatedUser: User) => {
         setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
         setEditingUser(null);
@@ -1186,9 +1190,13 @@ const AdminDashboard = () => {
 
     return (
         <>
-            {setupError && <AdminSetupInstructions type={setupError} onClose={() => setSetupError(null)} />}
             <div className="container mx-auto px-4 py-8">
                 <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
+                
+                <AdminBackendSetup />
+
+                {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6" role="alert">{error}</div>}
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                         <h2 className="text-2xl font-semibold mb-4">Manage Users ({users.length})</h2>

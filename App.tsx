@@ -1644,15 +1644,22 @@ const App = () => {
 
     setLoading(true);
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const profile = await ApiService.getUser(session.user.id);
-        setUser(profile);
-        setIsAuthenticated(!!profile);
-      } else {
+      try {
+        if (session?.user) {
+          const profile = await ApiService.getUser(session.user.id);
+          setUser(profile);
+          setIsAuthenticated(!!profile);
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.error("Error in onAuthStateChange callback:", error);
         setUser(null);
         setIsAuthenticated(false);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => {

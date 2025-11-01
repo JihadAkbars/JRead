@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -1157,7 +1159,8 @@ const AdminDashboard = () => {
                 setUsers(prev => prev.filter(u => u.id !== userId));
                 alert(`Successfully deleted user "${username}".`);
             } else {
-                if (error && error.code === '42883') {
+                // More robust check for missing function
+                if (error && (error.code === '42883' || error.message?.includes('does not exist'))) {
                     setError("Action failed: The database function 'admin_delete_user' is missing. Please follow the \"Backend Function Setup\" guide at the top of this page.");
                 } else {
                     setError(`Failed to delete user "${username}". Check the console for details.`);
@@ -1174,7 +1177,8 @@ const AdminDashboard = () => {
                 setNovels(prev => prev.filter(n => n.id !== novelId));
                 alert(`Successfully deleted novel "${title}".`);
             } else {
-                 if (error && error.code === '42883') {
+                 // More robust check for missing function
+                 if (error && (error.code === '42883' || error.message?.includes('does not exist'))) {
                     setError("Action failed: The database function 'admin_delete_novel' is missing. Please follow the \"Backend Function Setup\" guide at the top of this page.");
                 } else {
                     setError(`Failed to delete novel "${title}". Check the console for more details.`);

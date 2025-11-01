@@ -6,12 +6,11 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // 3. Find your Project URL and anon key
 // 4. Replace the placeholders below with your actual credentials
 
-const supabaseUrl = 'https://ykuscphjyycrwzxustic.supabase.co'; // e.g., 'https://your-project-id.supabase.co'
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrdXNjcGhqeXljcnd6eHVzdGljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE5NDkzNDcsImV4cCI6MjA3NzUyNTM0N30.J8vkm8PG1NqgkJjCcj5xnD8-_Cqx58veK2huAuZqIlY'; // e.g., 'eyJhbGciOiJIUzI1NiIsIn...'
+const supabaseUrl: string = 'https://ykuscphjyycrwzxustic.supabase.co'; // e.g., 'https://your-project-id.supabase.co'
+const supabaseAnonKey: string = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrdXNjcGhqeXljcnd6eHVzdGljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE5NDkzNDcsImV4cCI6MjA3NzUyNTM0N30.J8vkm8PG1NqgkJjCcj5xnD8-_Cqx58veK2huAuZqIlY'; // e.g., 'eyJhbGciOiJIUzI1NiIsIn...'
 
-// FIX: Cast to string to avoid TypeScript literal type comparison error.
 export const areSupabaseCredentialsSet =
-    (supabaseUrl as string) !== 'YOUR_SUPABASE_URL' && (supabaseAnonKey as string) !== 'YOUR_SUPABASE_ANON_KEY';
+    supabaseUrl !== 'YOUR_SUPABASE_URL' && supabaseAnonKey !== 'YOUR_SUPABASE_ANON_KEY';
 
 let supabase: SupabaseClient | null = null;
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -1058,8 +1057,12 @@ const AdminDashboard = () => {
     
     const handleDeleteNovel = async (novelId: string, title: string) => {
         if (window.confirm(`Are you sure you want to delete the novel "${title}"?`)) {
-            await ApiService.deleteNovel(novelId);
-            setNovels(prev => prev.filter(n => n.id !== novelId));
+            const { success } = await ApiService.adminDeleteNovel(novelId);
+            if (success) {
+                setNovels(prev => prev.filter(n => n.id !== novelId));
+            } else {
+                alert(`Failed to delete novel "${title}". Check the console for more details.`);
+            }
         }
     };
     

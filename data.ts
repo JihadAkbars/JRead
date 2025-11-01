@@ -278,6 +278,38 @@ export const ApiService = {
   },
 
   // --- ACTIVITY & INTERACTION METHODS --- //
+
+  /*
+    --- REQUIRED SQL FUNCTION FOR VIEW COUNTING ---
+    Run this in your Supabase SQL Editor to enable view counting.
+
+    CREATE OR REPLACE FUNCTION increment_views(p_novel_id uuid, p_chapter_id uuid)
+    RETURNS void AS $$
+    BEGIN
+        -- Increment chapter views
+        UPDATE public.chapters
+        SET views = views + 1
+        WHERE id = p_chapter_id;
+
+        -- Increment total novel views
+        UPDATE public.novels
+        SET views = views + 1
+        WHERE id = p_novel_id;
+    END;
+    $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+    GRANT EXECUTE ON FUNCTION increment_views(uuid, uuid) TO authenticated;
+  */
+  async incrementViews(novelId: string, chapterId: string): Promise<{ success: boolean }> {
+      if (!supabase) return { success: false };
+      const { error } = await supabase.rpc('increment_views', {
+          p_novel_id: novelId,
+          p_chapter_id: chapterId
+      });
+      if (error) console.error('Error incrementing views:', error);
+      return { success: !error };
+  },
+
   async setLastViewedNovel(userId: string, novelId: string): Promise<void> {
     await supabase.from('profiles').update({ last_viewed_novel_id: novelId }).eq('id', userId);
   },

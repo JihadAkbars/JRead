@@ -104,7 +104,7 @@ export const ApiService = {
   },
 
   async createNovel(author: User, novelData: Partial<Novel>, coverFile?: File): Promise<Novel> {
-    let coverImageUrl = novelData.coverImage || `https://picsum.photos/seed/newNovel${Date.now()}/400/600`;
+    let coverImageUrl = novelData.coverImage || `https://picsum.photos/seed/newNovel${Date.now()}/800/500`;
     if (coverFile) {
         const uploadedUrl = await uploadFile('cover_images', coverFile);
         if (uploadedUrl) coverImageUrl = uploadedUrl;

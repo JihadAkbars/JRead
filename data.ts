@@ -217,9 +217,44 @@ export const ApiService = {
       return toCamelCase(data.map((item: any) => item.novels).filter(Boolean)) as Novel[];
   },
 
-  // --- ACTIVITY METHODS --- //
+  // --- ACTIVITY & INTERACTION METHODS --- //
   async setLastViewedNovel(userId: string, novelId: string): Promise<void> {
     await supabase.from('profiles').update({ last_viewed_novel_id: novelId }).eq('id', userId);
+  },
+
+  async incrementNovelView(novelId: string): Promise<void> {
+    if (!supabase) return;
+    await supabase.rpc('increment_novel_view', { novel_id_to_increment: novelId });
+  },
+
+  async getUserInteractionStatus(novelId: string, userId: string): Promise<{ hasLiked: boolean, userRating: number | null }> {
+      const [likeRes, ratingRes] = await Promise.all([
+          supabase.from('likes').select('id').eq('user_id', userId).eq('novel_id', novelId).single(),
+          supabase.from('ratings').select('rating').eq('user_id', userId).eq('novel_id', novelId).single()
+      ]);
+
+      return {
+          hasLiked: !!likeRes.data && !likeRes.error,
+          userRating: ratingRes.data?.rating || null
+      };
+  },
+
+  async likeNovel(userId: string, novelId: string): Promise<{ success: boolean }> {
+      const { error } = await supabase.from('likes').insert({ user_id: userId, novel_id: novelId });
+      return { success: !error };
+  },
+
+  async unlikeNovel(userId: string, novelId: string): Promise<{ success: boolean }> {
+      const { error } = await supabase.from('likes').delete().eq('user_id', userId).eq('novel_id', novelId);
+      return { success: !error };
+  },
+
+  async submitRating(novelId: string, userId: string, rating: number): Promise<{ success: boolean }> {
+      const { error } = await supabase.from('ratings').upsert(
+          { user_id: userId, novel_id: novelId, rating: rating, updated_at: new Date().toISOString() }, 
+          { onConflict: 'user_id, novel_id' }
+      );
+      return { success: !error };
   },
 
 

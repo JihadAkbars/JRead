@@ -765,9 +765,17 @@ const NovelDetailPage = () => {
                     {novel.chapters?.map(chapter => (
                         <li key={chapter.id}>
                             <Link to={`/read/${novel.id}/${chapter.chapterNumber}`} className="block px-6 py-4 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                                <div className="flex justify-between items-center">
-                                    <p className="font-semibold text-light-text dark:text-dark-text">{chapter.title}</p>
-                                    <ArrowRightIcon className="w-5 h-5 text-gray-400"/>
+                                <div className="flex justify-between items-center gap-4">
+                                    <p className="font-semibold text-light-text dark:text-dark-text flex-grow min-w-0 truncate">
+                                        {chapter.chapterNumber}. {chapter.title}
+                                    </p>
+                                    <div className="flex items-center gap-4 flex-shrink-0">
+                                        <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400" title="Views">
+                                            <EyeIcon className="w-4 h-4" />
+                                            <span>{chapter.views?.toLocaleString() || 0}</span>
+                                        </div>
+                                        <ArrowRightIcon className="w-5 h-5 text-gray-400"/>
+                                    </div>
                                 </div>
                             </Link>
                         </li>
@@ -795,6 +803,7 @@ const ReaderPage = () => {
     const [isChapterMenuOpen, setIsChapterMenuOpen] = useState(false);
     const chapterMenuRef = useRef<HTMLDivElement>(null);
     const saveTimeoutRef = useRef<number | null>(null);
+    const viewTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (novelId && chapterId) {
@@ -867,6 +876,29 @@ const ReaderPage = () => {
             }
         };
     }, [user, novelId, chapter]);
+
+    useEffect(() => {
+        // This effect handles the time-based chapter view increment logic.
+        if (!chapter || !novel) return;
+
+        const viewIncrementedInSession = sessionStorage.getItem(`viewed_chapter_${chapter.id}`);
+        const isAuthor = user && user.id === novel.authorId;
+
+        if (!isAuthor && !viewIncrementedInSession) {
+            viewTimerRef.current = window.setTimeout(() => {
+                ApiService.incrementChapterView(chapter.id);
+                sessionStorage.setItem(`viewed_chapter_${chapter.id}`, 'true');
+                // Optimistically update chapter state to reflect the new view count.
+                setChapter(prev => prev ? { ...prev, views: (prev.views || 0) + 1 } : null);
+            }, 60000); // 1 minute
+        }
+
+        return () => {
+            if (viewTimerRef.current) {
+                clearTimeout(viewTimerRef.current);
+            }
+        };
+    }, [chapter, novel, user]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {

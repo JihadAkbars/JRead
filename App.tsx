@@ -551,9 +551,11 @@ const NovelDetailPage = () => {
                 return;
             }
 
-            const isAuthorViewing = user && user.id === novelData.authorId;
-            if (!isAuthorViewing) {
+            // Only increment view if the user is a guest or not the author.
+            const shouldIncrementView = !user || user.id !== novelData.authorId;
+            if (shouldIncrementView) {
                 await ApiService.incrementNovelView(id);
+                // Optimistically update the view count on the client
                 novelData = { ...novelData, views: novelData.views + 1 };
             }
             

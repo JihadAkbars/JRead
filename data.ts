@@ -283,7 +283,26 @@ export const ApiService = {
 
   async incrementNovelView(novelId: string): Promise<void> {
     if (!supabase) return;
+    // REQUIRED: This function must be created in the Supabase SQL Editor.
+    // CREATE OR REPLACE FUNCTION increment_novel_view(novel_id_to_increment uuid)
+    // RETURNS void AS $$
+    //   UPDATE novels
+    //   SET views = views + 1
+    //   WHERE id = novel_id_to_increment;
+    // $$ LANGUAGE sql;
     await supabase.rpc('increment_novel_view', { novel_id_to_increment: novelId });
+  },
+  
+  async incrementChapterView(chapterId: string): Promise<void> {
+    if (!supabase) return;
+    // REQUIRED: This function must be created in the Supabase SQL Editor.
+    // CREATE OR REPLACE FUNCTION increment_chapter_view(chapter_id_to_increment uuid)
+    // RETURNS void AS $$
+    //   UPDATE chapters
+    //   SET views = views + 1
+    //   WHERE id = chapter_id_to_increment;
+    // $$ LANGUAGE sql;
+    await supabase.rpc('increment_chapter_view', { chapter_id_to_increment: chapterId });
   },
 
   async getUserInteractionStatus(novelId: string, userId: string): Promise<{ hasLiked: boolean, userRating: number | null }> {

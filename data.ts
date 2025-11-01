@@ -283,26 +283,44 @@ export const ApiService = {
 
   async incrementNovelView(novelId: string): Promise<void> {
     if (!supabase) return;
-    // REQUIRED: This function must be created in the Supabase SQL Editor.
+    // REQUIRED: This function must be created in the Supabase SQL Editor to bypass RLS.
     // CREATE OR REPLACE FUNCTION increment_novel_view(novel_id_to_increment uuid)
-    // RETURNS void AS $$
-    //   UPDATE novels
+    // RETURNS void
+    // LANGUAGE sql
+    // SECURITY DEFINER
+    // AS $$
+    //   UPDATE public.novels
     //   SET views = views + 1
     //   WHERE id = novel_id_to_increment;
-    // $$ LANGUAGE sql;
-    await supabase.rpc('increment_novel_view', { novel_id_to_increment: novelId });
+    // $$;
+    //
+    // -- Then, grant permission to all authenticated users to call it
+    // GRANT EXECUTE ON FUNCTION public.increment_novel_view(uuid) TO authenticated;
+    const { error } = await supabase.rpc('increment_novel_view', { novel_id_to_increment: novelId });
+    if (error) {
+        console.error("Error incrementing novel view:", error);
+    }
   },
   
   async incrementChapterView(chapterId: string): Promise<void> {
     if (!supabase) return;
-    // REQUIRED: This function must be created in the Supabase SQL Editor.
+    // REQUIRED: This function must be created in the Supabase SQL Editor to bypass RLS.
     // CREATE OR REPLACE FUNCTION increment_chapter_view(chapter_id_to_increment uuid)
-    // RETURNS void AS $$
-    //   UPDATE chapters
+    // RETURNS void
+    // LANGUAGE sql
+    // SECURITY DEFINER
+    // AS $$
+    //   UPDATE public.chapters
     //   SET views = views + 1
     //   WHERE id = chapter_id_to_increment;
-    // $$ LANGUAGE sql;
-    await supabase.rpc('increment_chapter_view', { chapter_id_to_increment: chapterId });
+    // $$;
+    //
+    // -- Then, grant permission to all authenticated users to call it
+    // GRANT EXECUTE ON FUNCTION public.increment_chapter_view(uuid) TO authenticated;
+    const { error } = await supabase.rpc('increment_chapter_view', { chapter_id_to_increment: chapterId });
+    if (error) {
+        console.error("Error incrementing chapter view:", error);
+    }
   },
 
   async getUserInteractionStatus(novelId: string, userId: string): Promise<{ hasLiked: boolean, userRating: number | null }> {

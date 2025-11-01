@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -1159,9 +1157,11 @@ const AdminDashboard = () => {
                 setUsers(prev => prev.filter(u => u.id !== userId));
                 alert(`Successfully deleted user "${username}".`);
             } else {
-                const errorMessage = `Failed to delete user "${username}". Make sure the backend RPC function is set up correctly. Check the console for more details.`;
-                setError(errorMessage);
-                alert(errorMessage);
+                if (error && error.code === '42883') {
+                    setError("Action failed: The database function 'admin_delete_user' is missing. Please follow the \"Backend Function Setup\" guide at the top of this page.");
+                } else {
+                    setError(`Failed to delete user "${username}". Check the console for details.`);
+                }
             }
         }
     };
@@ -1174,9 +1174,11 @@ const AdminDashboard = () => {
                 setNovels(prev => prev.filter(n => n.id !== novelId));
                 alert(`Successfully deleted novel "${title}".`);
             } else {
-                 const errorMessage = `Failed to delete novel "${title}". Make sure the backend RPC function is set up correctly. Check the console for more details.`;
-                setError(errorMessage);
-                alert(errorMessage);
+                 if (error && error.code === '42883') {
+                    setError("Action failed: The database function 'admin_delete_novel' is missing. Please follow the \"Backend Function Setup\" guide at the top of this page.");
+                } else {
+                    setError(`Failed to delete novel "${title}". Check the console for more details.`);
+                }
             }
         }
     };

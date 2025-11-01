@@ -65,7 +65,7 @@ const NovelsProvider = ({ children }: { children: ReactNode }) => {
 
     const value = { novels, loading, updateNovelInList };
 
-    return <NovelsContext.Provider value={value}>{children}</NovelsProvider>;
+    return <NovelsContext.Provider value={value}>{children}</NovelsContext.Provider>;
 }
 
 
@@ -968,8 +968,7 @@ const AdminLoginPage = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
         const success = await auth.login(email, password);
         if (success) {
             if (!supabase) return;
-            // FIX: Changed from `await supabase.auth.getUser()` to synchronous `supabase.auth.user()` for Supabase v1 compatibility.
-            const user = supabase.auth.user();
+            const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 const profile = await ApiService.getUser(user.id);
                 if (profile?.role === UserRole.ADMIN) {
@@ -2665,8 +2664,7 @@ const App = () => {
       return;
     }
     
-    // FIX: Changed destructuring for Supabase v1 compatibility.
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setLoading(false);
       setIsAuthenticated(!!session);
 
@@ -2690,29 +2688,24 @@ const App = () => {
     });
 
     return () => {
-      // FIX: Added optional chaining for safety.
       subscription?.unsubscribe();
     };
   }, []);
 
   const login = async (email: string, pass: string): Promise<boolean> => {
     if (!supabase) return false;
-    // FIX: Changed from `signInWithPassword` to `signIn` for Supabase v1 compatibility.
-    const { error } = await supabase.auth.signIn({ email, password: pass });
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
     return !error;
   };
   
   const signup = async (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string): Promise<{ success: boolean; message: string; }> => {
     if (!supabase) return { success: false, message: 'Database client not initialized.' };
 
-    // FIX: Changed to `signUp` with two arguments and `redirectTo` for Supabase v1 compatibility.
-    const { data, error } = await supabase.auth.signUp(
-      {
-        email,
-        password: pass,
-      },
-      {
-        redirectTo: `${window.location.origin}${window.location.pathname}#/verified-email`,
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}#/verified-email`,
         data: {
           username,
           email,
@@ -2722,7 +2715,7 @@ const App = () => {
           profile_picture: `https://picsum.photos/seed/newUser${Date.now()}/100/100`,
         }
       }
-    );
+    });
 
     if (error) {
       return { success: false, message: error.message };
@@ -2756,8 +2749,7 @@ const App = () => {
         }
         
         // Update auth user metadata
-        // FIX: Changed from `updateUser` to `update` for Supabase v1 compatibility.
-        const { error: authError } = await supabase.auth.update(authUpdateData);
+        const { error: authError } = await supabase.auth.updateUser(authUpdateData);
         if (authError) throw authError;
 
         // Update public profiles table

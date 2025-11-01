@@ -27,6 +27,48 @@ export const useAuth = () => {
   return context;
 };
 
+// --- NOVELS CONTEXT --- //
+interface NovelsContextType {
+    novels: Novel[];
+    loading: boolean;
+    updateNovelInList: (novelId: string, updatedData: Partial<Novel>) => void;
+}
+const NovelsContext = createContext<NovelsContextType | null>(null);
+
+export const useNovels = () => {
+    const context = useContext(NovelsContext);
+    if (!context) throw new Error("useNovels must be used within a NovelsProvider");
+    return context;
+};
+
+const NovelsProvider = ({ children }: { children: ReactNode }) => {
+    const [novels, setNovels] = useState<Novel[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchNovels = async () => {
+            setLoading(true);
+            const data = await ApiService.getNovels();
+            setNovels(data);
+            setLoading(false);
+        };
+        fetchNovels();
+    }, []);
+
+    const updateNovelInList = (novelId: string, updatedData: Partial<Novel>) => {
+        setNovels(currentNovels =>
+            currentNovels.map(n =>
+                n.id === novelId ? { ...n, ...updatedData } : n
+            )
+        );
+    };
+
+    const value = { novels, loading, updateNovelInList };
+
+    return <NovelsContext.Provider value={value}>{children}</NovelsContext.Provider>;
+}
+
+
 // --- UI HELPER COMPONENTS --- //
 type ButtonProps = ComponentPropsWithoutRef<'button'> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -410,21 +452,10 @@ const Header = () => {
 
 // --- PAGES --- //
 const HomePage = () => {
-  const [novels, setNovels] = useState<Novel[]>([]);
+  const { novels, loading } = useNovels();
   const [displayNovels, setDisplayNovels] = useState<Novel[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeGenre, setActiveGenre] = useState('All');
   const [sortBy, setSortBy] = useState<'createdAt' | 'views' | 'rating'>('createdAt');
-
-  useEffect(() => {
-    const fetchNovels = async () => {
-      setLoading(true);
-      const data = await ApiService.getNovels();
-      setNovels(data);
-      setLoading(false);
-    };
-    fetchNovels();
-  }, []);
   
   useEffect(() => {
     let processedNovels = [...novels];
@@ -530,6 +561,7 @@ const InteractiveRating = ({ currentRating, userRating, onRate, disabled }: { cu
 const NovelDetailPage = () => {
     const { id } = useParams();
     const { user, showAuthModal } = useAuth();
+    const { updateNovelInList } = useNovels();
     const [novel, setNovel] = useState<Novel | null>(null);
     const [isBookmarked, setIsBookmarked] = useState(false);
     const [hasLiked, setHasLiked] = useState(false);
@@ -543,7 +575,8 @@ const NovelDetailPage = () => {
         const loadData = async () => {
             setIsLoading(true);
             
-            let novelData = await ApiService.getNovel(id);
+            const viewIncrementedInSession = sessionStorage.getItem(`viewed_${id}`);
+            const novelData = await ApiService.getNovel(id);
 
             if (!novelData) {
                 setNovel(null);
@@ -551,15 +584,22 @@ const NovelDetailPage = () => {
                 return;
             }
 
-            // Only increment view if the user is a guest or not the author.
-            const shouldIncrementView = !user || user.id !== novelData.authorId;
-            if (shouldIncrementView) {
-                await ApiService.incrementNovelView(id);
-                // Optimistically update the view count on the client
-                novelData = { ...novelData, views: novelData.views + 1 };
-            }
+            const isAuthor = user && user.id === novelData.authorId;
             
-            setNovel(novelData);
+            if (!isAuthor && !viewIncrementedInSession) {
+                ApiService.incrementNovelView(id);
+                sessionStorage.setItem(`viewed_${id}`, 'true');
+                const newViews = novelData.views + 1;
+                updateNovelInList(id, { views: newViews });
+                setNovel(prev => ({ ...(prev || novelData), ...novelData, views: newViews }));
+            } else {
+                 setNovel(prev => {
+                    if (prev && prev.id === id && prev.views > novelData.views) {
+                        return { ...novelData, views: prev.views };
+                    }
+                    return novelData;
+                });
+            }
 
             if (user) {
                 ApiService.setLastViewedNovel(user.id, id);
@@ -606,8 +646,11 @@ const NovelDetailPage = () => {
         if (!novel) return;
 
         const newLikedState = !hasLiked;
+        const newLikesCount = novel.likes + (newLikedState ? 1 : -1);
+        
         setHasLiked(newLikedState);
-        setNovel(prev => prev ? { ...prev, likes: prev.likes + (newLikedState ? 1 : -1) } : null);
+        setNovel(prev => prev ? { ...prev, likes: newLikesCount } : null);
+        updateNovelInList(novel.id, { likes: newLikesCount });
 
         if (newLikedState) {
             await ApiService.likeNovel(user.id, novel.id);
@@ -626,7 +669,10 @@ const NovelDetailPage = () => {
          if (success) {
             // Refetch novel to get updated average rating from the DB trigger
             const updatedNovel = await ApiService.getNovel(novel.id);
-            if (updatedNovel) setNovel(updatedNovel);
+            if (updatedNovel) {
+                setNovel(updatedNovel);
+                updateNovelInList(novel.id, { rating: updatedNovel.rating });
+            }
          } else {
             setUserRating(oldUserRating); // Revert on failure
          }
@@ -2428,15 +2474,17 @@ const App = () => {
   
   return (
     <AuthContext.Provider value={authContextValue}>
-      <HashRouter>
-        <div className="flex flex-col min-h-screen font-sans text-light-text dark:text-dark-text">
-          <Header />
-          <main className="flex-grow">
-            <AppRouter />
-          </main>
-        </div>
-        <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
-      </HashRouter>
+      <NovelsProvider>
+        <HashRouter>
+          <div className="flex flex-col min-h-screen font-sans text-light-text dark:text-dark-text">
+            <Header />
+            <main className="flex-grow">
+              <AppRouter />
+            </main>
+          </div>
+          <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+        </HashRouter>
+      </NovelsProvider>
     </AuthContext.Provider>
   );
 };

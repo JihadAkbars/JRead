@@ -47,8 +47,9 @@ export const ApiService = {
   },
 
   async updateUser(id: string, updatedData: Partial<User>): Promise<User | null> {
-    const { profilePicture, penName, bio, role } = updatedData;
+    const { username, profilePicture, penName, bio, role } = updatedData;
     const { data, error } = await supabase.from('profiles').update({ 
+        username,
         profile_picture: profilePicture,
         pen_name: penName,
         bio,
@@ -56,6 +57,16 @@ export const ApiService = {
     }).eq('id', id).select().single();
     if (error) throw error;
     return toCamelCase(data) as User;
+  },
+
+  async deleteSelf(): Promise<{ success: boolean; error?: any }> {
+    if (!supabase) return { success: false, error: 'Supabase client not initialized.' };
+    const { error } = await supabase.rpc('delete_user_account');
+    if (error) {
+        console.error('Error deleting account via RPC:', error);
+        return { success: false, error };
+    }
+    return { success: true };
   },
 
   // --- NOVEL METHODS --- //

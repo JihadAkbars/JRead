@@ -39,6 +39,7 @@ export interface Novel {
   status: NovelStatus;
   rating: number;
   likes: number;
+  views: number;
   language: string;
   chapters: Chapter[];
   createdAt: Date;
@@ -52,6 +53,7 @@ export interface Chapter {
   chapterNumber: number;
   isPublished: boolean;
   likes: number;
+  views: number;
   createdAt: Date;
 }
 

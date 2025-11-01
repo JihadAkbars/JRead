@@ -92,12 +92,81 @@ export const ApiService = {
     return (toCamelCase(data) as Novel[]).map(n => ({...n, chapters: []})); // chapters fetched separately
   },
 
+  async addNovel(novelData: Omit<Novel, 'id' | 'authorName' | 'rating' | 'likes' | 'chapters' | 'createdAt'>): Promise<Novel | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('novels').insert({
+        title: novelData.title,
+        author_id: novelData.authorId,
+        cover_image: novelData.coverImage,
+        synopsis: novelData.synopsis,
+        genre: novelData.genre,
+        tags: novelData.tags,
+        status: novelData.status,
+        language: novelData.language,
+    }).select().single();
+    if (error) throw error;
+    return toCamelCase(data) as Novel;
+  },
+
+  async updateNovel(id: string, updates: Partial<Omit<Novel, 'id' | 'authorId'>>): Promise<Novel | null> {
+    if (!supabase) return null;
+    const dbUpdates: any = {};
+    if (updates.title) dbUpdates.title = updates.title;
+    if (updates.coverImage) dbUpdates.cover_image = updates.coverImage;
+    if (updates.synopsis) dbUpdates.synopsis = updates.synopsis;
+    if (updates.genre) dbUpdates.genre = updates.genre;
+    if (updates.tags) dbUpdates.tags = updates.tags;
+    if (updates.status) dbUpdates.status = updates.status;
+    
+    const { data, error } = await supabase.from('novels').update(dbUpdates).eq('id', id).select().single();
+    if (error) throw error;
+    return toCamelCase(data) as Novel;
+  },
+
+  async deleteNovel(id: string): Promise<{ success: boolean }> {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.from('novels').delete().eq('id', id);
+    return { success: !error };
+  },
+
   // --- CHAPTER METHODS --- //
   async getChapterById(id: string): Promise<Chapter | undefined> {
     if (!supabase) return undefined;
     const { data, error } = await supabase.from('chapters').select('*').eq('id', id).single();
     if (error) return undefined;
     return toCamelCase(data) as Chapter;
+  },
+  
+  async addChapter(chapterData: Omit<Chapter, 'id' | 'likes' | 'createdAt'>): Promise<Chapter | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('chapters').insert({
+        novel_id: chapterData.novelId,
+        title: chapterData.title,
+        content: chapterData.content,
+        chapter_number: chapterData.chapterNumber,
+        is_published: chapterData.isPublished,
+    }).select().single();
+    if (error) throw error;
+    return toCamelCase(data) as Chapter;
+  },
+
+  async updateChapter(id: string, updates: Partial<Omit<Chapter, 'id' | 'novelId'>>): Promise<Chapter | null> {
+    if (!supabase) return null;
+    const dbUpdates: any = {};
+    if (updates.title) dbUpdates.title = updates.title;
+    if (updates.content) dbUpdates.content = updates.content;
+    if (updates.isPublished !== undefined) dbUpdates.is_published = updates.isPublished;
+    if (updates.chapterNumber) dbUpdates.chapter_number = updates.chapterNumber;
+    
+    const { data, error } = await supabase.from('chapters').update(dbUpdates).eq('id', id).select().single();
+    if (error) throw error;
+    return toCamelCase(data) as Chapter;
+  },
+  
+  async deleteChapter(id: string): Promise<{ success: boolean }> {
+      if (!supabase) return { success: false };
+      const { error } = await supabase.from('chapters').delete().eq('id', id);
+      return { success: !error };
   },
 
   // --- COMMENT METHODS --- //
@@ -191,4 +260,5 @@ export const ApiService = {
 
   // --- UPLOAD METHOD EXPORT --- //
   uploadProfilePicture: (file: File) => uploadFile('profile_pictures', file),
+  uploadCoverImage: (file: File) => uploadFile('cover_images', file),
 };

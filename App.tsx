@@ -1681,36 +1681,37 @@ const App = () => {
       setLoading(false);
       return;
     }
-
-    setLoading(true);
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    
+    // onAuthStateChange fires on initial load and whenever the auth state changes.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // As soon as this callback fires, we know the session status.
+      // We can hide the main loading screen.
+      setLoading(false);
       setIsAuthenticated(!!session);
 
       if (session?.user) {
-        try {
-          const profile = await ApiService.getUser(session.user.id);
-          if (profile) {
-            setUser(profile);
-          } else {
-            // This handles a case where an auth user exists but has no profile row.
-            // This can happen due to race conditions or if the profile creation trigger fails.
-            // Logging out is the safest action to prevent an inconsistent state.
-            console.warn("No profile found for authenticated user. Logging out.");
-            await supabase.auth.signOut();
-            setUser(null);
-            setIsAuthenticated(false);
-          }
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
-          setUser(null);
-          setIsAuthenticated(false);
-        }
+        // If there's a user, fetch their profile data in the background.
+        // The UI is already interactive at this point.
+        ApiService.getUser(session.user.id)
+          .then((profile) => {
+            if (profile) {
+              setUser(profile);
+            } else {
+              // This is an inconsistent state (auth user without a profile).
+              // Log the user out to prevent errors.
+              console.warn("No profile found for authenticated user. Logging out.");
+              supabase.auth.signOut();
+            }
+          })
+          .catch((error) => {
+            console.error("Error fetching user profile:", error);
+            // Log out on error to be safe.
+            supabase.auth.signOut();
+          });
       } else {
+        // If there's no session, clear the user object.
         setUser(null);
       }
-      
-      // The app is considered "loaded" once the session status is determined.
-      setLoading(false);
     });
 
     return () => {
@@ -1800,7 +1801,7 @@ const App = () => {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+    return <div className="flex items-center justify-center h-screen bg-light-bg dark:bg-dark-bg text-light-text dark:text-dark-text">Loading...</div>;
   }
   
   return (

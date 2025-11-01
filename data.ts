@@ -1,5 +1,3 @@
-
-
 import { supabase } from './supabaseClient';
 import { User, Novel, Chapter, Comment, UserRole, NovelStatus } from './types';
 
@@ -36,6 +34,7 @@ export const ApiService = {
   async getUsers(): Promise<User[]> {
     const { data, error } = await supabase.from('profiles').select('*');
     if (error) throw error;
+    if (!data) return [];
     return toCamelCase(data) as User[];
   },
 
@@ -77,6 +76,7 @@ export const ApiService = {
   async getNovels(): Promise<Novel[]> {
     const { data, error } = await supabase.from('novels').select('*').order('created_at', { ascending: false });
     if (error) throw error;
+    if (!data) return [];
     return (toCamelCase(data) as Novel[]).map(n => ({...n, chapters: []})); // chapters fetched separately
   },
 
@@ -102,6 +102,7 @@ export const ApiService = {
   async getNovelsByAuthor(authorId: string): Promise<Novel[]> {
     const { data, error } = await supabase.from('novels').select('*').eq('author_id', authorId).order('created_at', { ascending: false });
     if (error) throw error;
+    if (!data) return [];
     return (toCamelCase(data) as Novel[]).map(n => ({...n, chapters: []})); // chapters fetched separately
   },
 
@@ -275,6 +276,7 @@ export const ApiService = {
           console.error('Error fetching bookmarked novels:', error);
           return [];
       }
+      if (!data) return [];
       return toCamelCase(data.map((item: any) => item.novels).filter(Boolean)) as Novel[];
   },
 

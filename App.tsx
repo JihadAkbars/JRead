@@ -632,7 +632,7 @@ const NovelDetailPage = () => {
                 setNovel(prev => prev ? { ...prev, views: newViews } : null);
                 updateNovelInList(id, { views: newViews });
 
-            }, 120000); // 2 minutes
+            }, 60000); // 1 minute
         }
 
         // Cleanup function to clear the timer if the user navigates away.

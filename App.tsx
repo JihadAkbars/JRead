@@ -88,8 +88,8 @@ const SupabaseCredentialsWarning = () => (
 const NovelCard: React.FC<{ novel: Novel }> = ({ novel }) => {
   return (
     <Link to={`/novel/${novel.id}`} className="group block bg-light-surface dark:bg-dark-surface rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300">
-      <div className="relative">
-        <img src={novel.coverImage} alt={novel.title} className="w-full h-64 object-cover" />
+      <div className="relative aspect-[1.6/1] bg-gray-200 dark:bg-gray-700">
+        <img src={novel.coverImage} alt={novel.title} className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black bg-opacity-20 group-hover:bg-opacity-40 transition-all duration-300"></div>
       </div>
       <div className="p-4">
@@ -321,7 +321,7 @@ const Header = () => {
                             className="px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer flex items-center gap-3"
                             onClick={() => handleSuggestionClick(item)}
                         >
-                           <img src={item.coverImage} alt={item.title} className="w-8 h-12 object-cover rounded flex-shrink-0"/>
+                           <img src={item.coverImage} alt={item.title} className="w-10 h-6 object-cover rounded flex-shrink-0"/>
                            <div>
                                <p className="font-semibold text-sm truncate text-light-text dark:text-dark-text">{item.title}</p>
                                <p className="text-xs text-gray-500 dark:text-gray-400">by {item.authorName}</p>
@@ -531,7 +531,7 @@ const NovelDetailPage = () => {
         <div className="container mx-auto px-4 py-8">
             <div className="flex flex-col md:flex-row gap-8">
                 <div className="md:w-1/3 flex-shrink-0">
-                    <img src={novel.coverImage} alt={novel.title} className="w-full rounded-lg shadow-lg"/>
+                    <img src={novel.coverImage} alt={novel.title} className="w-full rounded-lg shadow-lg aspect-[1.6/1] object-cover"/>
                 </div>
                 <div className="md:w-2/3">
                     <h1 className="text-4xl font-bold text-light-text dark:text-dark-text">{novel.title}</h1>
@@ -1272,8 +1272,8 @@ const CreateNovelModal = ({ isOpen, onClose, onNovelCreated }: { isOpen: boolean
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Cover Image</label>
                         <div className="mt-1 flex items-center gap-4 p-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md">
                             {coverImagePreview ? 
-                                <img src={coverImagePreview} alt="Cover preview" className="w-20 h-28 object-cover rounded"/> :
-                                <div className="w-20 h-28 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
+                                <img src={coverImagePreview} alt="Cover preview" className="w-32 h-20 object-cover rounded"/> :
+                                <div className="w-32 h-20 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
                             }
                              <Button type="button" variant="ghost" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2">
                                 <UploadIcon className="w-5 h-5"/>
@@ -1399,8 +1399,8 @@ const EditNovelModal = ({ novel, isOpen, onClose, onNovelUpdated }: { novel: Nov
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Cover Image</label>
                         <div className="mt-1 flex items-center gap-4 p-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md">
                             {coverImagePreview ? 
-                                <img src={coverImagePreview} alt="Cover preview" className="w-20 h-28 object-cover rounded"/> :
-                                <div className="w-20 h-28 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
+                                <img src={coverImagePreview} alt="Cover preview" className="w-32 h-20 object-cover rounded"/> :
+                                <div className="w-32 h-20 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
                             }
                              <Button type="button" variant="ghost" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2">
                                 <UploadIcon className="w-5 h-5"/>
@@ -1695,7 +1695,7 @@ const AuthorDashboardPage = () => {
                             <li key={novel.id}>
                                 <div className="p-4 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer" onClick={() => toggleNovelExpansion(novel.id)}>
                                 <div className="flex items-center gap-4 flex-grow min-w-0">
-                                    <img src={novel.coverImage} alt={novel.title} className="w-16 h-24 object-cover rounded flex-shrink-0"/>
+                                    <img src={novel.coverImage} alt={novel.title} className="w-20 h-[50px] object-cover rounded flex-shrink-0"/>
                                     <div className="flex-grow min-w-0">
                                             <p className="font-semibold text-lg truncate">{novel.title}</p>
                                             <p className={`text-sm font-medium ${novel.status === NovelStatus.PUBLISHED ? 'text-green-500' : 'text-yellow-500'}`}>{novel.status}</p>

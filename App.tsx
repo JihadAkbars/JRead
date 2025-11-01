@@ -14,7 +14,8 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<boolean>;
   signup: (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string) => Promise<{ success: boolean; message: string; }>;
   logout: () => void;
-  updateUser: (updatedData: Partial<User>, profilePicFile?: File) => Promise<void>;
+  updateUser: (updatedData: Partial<User>, profilePicFile?: File) => Promise<{success: boolean, message?: string}>;
+  deleteAccount: () => Promise<{success: boolean, message?: string}>;
   showAuthModal: () => void;
 }
 
@@ -28,7 +29,7 @@ export const useAuth = () => {
 
 // --- UI HELPER COMPONENTS --- //
 type ButtonProps = ComponentPropsWithoutRef<'button'> & {
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
 };
 
 const Button = ({ children, className = '', variant = 'primary', type = 'button', ...rest }: ButtonProps) => {
@@ -37,6 +38,7 @@ const Button = ({ children, className = '', variant = 'primary', type = 'button'
     primary: 'bg-primary text-white hover:bg-indigo-700 focus:ring-indigo-500',
     secondary: 'bg-secondary text-white hover:bg-emerald-600 focus:ring-emerald-500',
     ghost: 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700',
+    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
   };
   return <button type={type} className={`${baseClasses} ${variantClasses[variant]} ${className}`} {...rest}>{children}</button>;
 };
@@ -354,6 +356,13 @@ const Header = () => {
                         className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
                         Profile
+                    </Link>
+                    <Link 
+                        to="/settings" 
+                        onClick={() => setIsProfileDropdownOpen(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                        Settings
                     </Link>
                     <button 
                         onClick={() => { logout(); setIsProfileDropdownOpen(false); navigate('/'); }} 
@@ -1691,6 +1700,174 @@ const EmailVerifiedPage = () => {
     );
 };
 
+// --- ACCOUNT SETTINGS PAGE & COMPONENTS --- //
+const DeleteAccountModal = ({ user, isOpen, onClose, onConfirm }: { user: User, isOpen: boolean, onClose: () => void, onConfirm: () => void }) => {
+    const [confirmationText, setConfirmationText] = useState('');
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [error, setError] = useState('');
+    const isMatch = confirmationText === user.username;
+
+    const handleDelete = async () => {
+        if (!isMatch) return;
+        setIsDeleting(true);
+        setError('');
+        try {
+            await onConfirm();
+        } catch (e: any) {
+            setError(e.message || 'Failed to delete account.');
+            setIsDeleting(false);
+        }
+    };
+    
+    return (
+        <Modal isOpen={isOpen} onClose={onClose}>
+            <h2 className="text-2xl font-bold text-red-600 dark:text-red-500">Delete Account</h2>
+            <p className="my-4 text-gray-600 dark:text-gray-400">
+                This action is irreversible. All your data, including your profile, novels, and chapters, will be permanently deleted.
+            </p>
+            <p className="mb-2 text-sm">Please type <strong className="text-light-text dark:text-dark-text">{user.username}</strong> to confirm.</p>
+            <Input 
+                type="text" 
+                value={confirmationText}
+                onChange={(e) => setConfirmationText(e.target.value)}
+                className={!isMatch && confirmationText.length > 0 ? 'border-red-500 ring-red-500' : ''}
+                aria-label="Confirm username for deletion"
+            />
+            {error && <p className="text-red-500 text-center mt-4">{error}</p>}
+            <div className="flex justify-end gap-2 pt-6 mt-4 border-t border-gray-200 dark:border-gray-700">
+                <Button onClick={onClose} variant="ghost" disabled={isDeleting}>Cancel</Button>
+                <Button onClick={handleDelete} variant="danger" disabled={!isMatch || isDeleting}>
+                    {isDeleting ? 'Deleting...' : 'Delete My Account'}
+                </Button>
+            </div>
+        </Modal>
+    );
+};
+
+const AccountSettingsPage = () => {
+    const { user, isUpdating, updateUser, deleteAccount } = useAuth();
+    const navigate = useNavigate();
+    
+    const [username, setUsername] = useState(user?.username || '');
+    const [penName, setPenName] = useState(user?.penName || '');
+    const [bio, setBio] = useState(user?.bio || '');
+    const [profilePicFile, setProfilePicFile] = useState<File | null>(null);
+    const [profilePicPreview, setProfilePicPreview] = useState<string | null>(user?.profilePicture || null);
+    
+    const [statusMessage, setStatusMessage] = useState({ type: '', text: '' });
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (!user) {
+            navigate('/');
+        }
+    }, [user, navigate]);
+
+    if (!user) {
+        return null; // or a loading/redirect component
+    }
+
+    const handleProfileUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setStatusMessage({ type: '', text: '' });
+        
+        const result = await updateUser({
+            username,
+            penName: user.role === UserRole.AUTHOR ? penName : user.penName,
+            bio,
+        }, profilePicFile || undefined);
+
+        if (result.success) {
+            setStatusMessage({ type: 'success', text: 'Profile updated successfully!' });
+        } else {
+            setStatusMessage({ type: 'error', text: result.message || 'Failed to update profile.' });
+        }
+        setProfilePicFile(null); // Clear file after submission
+    };
+    
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            setProfilePicFile(file);
+            setProfilePicPreview(URL.createObjectURL(file));
+        }
+    };
+    
+    const handleDeleteConfirm = async () => {
+        const result = await deleteAccount();
+        if (result.success) {
+            setIsDeleteModalOpen(false);
+            navigate('/');
+        } else {
+           throw new Error(result.message || 'An unexpected error occurred.');
+        }
+    };
+    
+    return (
+       <>
+            <div className="container mx-auto max-w-3xl p-4 md:p-8">
+                <h1 className="text-3xl font-bold mb-8">Account Settings</h1>
+                
+                {/* Profile Information Section */}
+                <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md p-6 mb-8">
+                    <h2 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">Profile Information</h2>
+                    <form onSubmit={handleProfileUpdate} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Profile Picture</label>
+                            <div className="mt-2 flex items-center gap-4">
+                                <img src={profilePicPreview || user.profilePicture} alt="Profile preview" className="w-20 h-20 rounded-full object-cover"/>
+                                <Button type="button" variant="ghost" onClick={() => fileInputRef.current?.click()}>Upload New Image</Button>
+                                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden"/>
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="username" className="block text-sm font-medium">Username</label>
+                            <Input id="username" type="text" value={username} onChange={e => setUsername(e.target.value)} required />
+                        </div>
+                         {user.role === UserRole.AUTHOR && (
+                            <div>
+                                <label htmlFor="penName" className="block text-sm font-medium">Pen Name</label>
+                                <Input id="penName" type="text" value={penName} onChange={e => setPenName(e.target.value)} />
+                            </div>
+                        )}
+                        <div>
+                            <label htmlFor="bio" className="block text-sm font-medium">Bio</label>
+                            <textarea id="bio" value={bio} onChange={e => setBio(e.target.value)} rows={4} className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary" />
+                        </div>
+                        <div className="flex justify-end items-center gap-4 pt-2">
+                           {statusMessage.text && <p className={`text-sm ${statusMessage.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>{statusMessage.text}</p>}
+                            <Button type="submit" disabled={isUpdating}>
+                                {isUpdating ? 'Saving...' : 'Save Changes'}
+                            </Button>
+                        </div>
+                    </form>
+                </div>
+                
+                {/* Danger Zone Section */}
+                 <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md p-6 border-2 border-red-300 dark:border-red-800/50">
+                    <h2 className="text-xl font-semibold text-red-600 dark:text-red-500">Danger Zone</h2>
+                    <p className="text-gray-600 dark:text-gray-400 mt-2 mb-4">
+                        Permanently delete your account and all of its content from the platform. This action is not reversible, so please continue with caution.
+                    </p>
+                    <Button variant="danger" onClick={() => setIsDeleteModalOpen(true)}>Delete My Account</Button>
+                </div>
+
+            </div>
+            {isDeleteModalOpen && (
+                <DeleteAccountModal 
+                    user={user}
+                    isOpen={isDeleteModalOpen}
+                    onClose={() => setIsDeleteModalOpen(false)}
+                    onConfirm={handleDeleteConfirm}
+                />
+            )}
+        </>
+    );
+};
+
+
 const AppRouter = () => {
   return (
     <Routes>
@@ -1702,6 +1879,7 @@ const AppRouter = () => {
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/editor/:novelId/:chapterNumber" element={<ChapterEditorPage />} />
       <Route path="/verified-email" element={<EmailVerifiedPage />} />
+      <Route path="/settings" element={<AccountSettingsPage />} />
     </Routes>
   );
 };
@@ -1785,25 +1963,60 @@ const App = () => {
     return { success: false, message: 'An unknown error occurred during sign up.' };
   };
 
-  const updateUser = async (updatedData: Partial<User>, profilePicFile?: File) => {
-    if (!user || !supabase) return;
+  const updateUser = async (updatedData: Partial<User>, profilePicFile?: File): Promise<{success: boolean, message?: string}> => {
+    if (!user || !supabase) return { success: false, message: 'User not authenticated' };
     setIsUpdating(true);
     try {
-        let finalData = { ...updatedData };
+        let profileUpdateData: Partial<User> = { 
+            username: updatedData.username,
+            penName: updatedData.penName,
+            bio: updatedData.bio,
+            role: updatedData.role,
+         };
+        
+        let authUpdateData: { data: any, password?: string } = { data: {
+            username: updatedData.username,
+            pen_name: updatedData.penName,
+            bio: updatedData.bio,
+        }};
+
         if (profilePicFile) {
             const newProfilePicUrl = await ApiService.uploadProfilePicture(profilePicFile);
             if (newProfilePicUrl) {
-                finalData.profilePicture = newProfilePicUrl;
+                profileUpdateData.profilePicture = newProfilePicUrl;
+                authUpdateData.data.profile_picture = newProfilePicUrl;
             }
         }
-        const updatedUser = await ApiService.updateUser(user.id, finalData);
+        
+        // Update auth user metadata
+        const { error: authError } = await supabase.auth.updateUser(authUpdateData);
+        if (authError) throw authError;
+
+        // Update public profiles table
+        const updatedUser = await ApiService.updateUser(user.id, profileUpdateData);
         if (updatedUser) {
             setUser(updatedUser);
+        } else {
+            throw new Error("Failed to update user profile in database.");
         }
-    } catch (error) {
+        return { success: true };
+    } catch (error: any) {
         console.error("Failed to update user:", error);
+        return { success: false, message: error.message };
     } finally {
         setIsUpdating(false);
+    }
+  };
+
+  const deleteAccount = async (): Promise<{success: boolean, message?: string}> => {
+    const { success, error } = await ApiService.deleteSelf();
+    if(success) {
+      // The RPC call signs the user out by deleting them, but we clear state just in case.
+      setUser(null);
+      setIsAuthenticated(false);
+      return { success: true };
+    } else {
+      return { success: false, message: error?.message || "An error occurred during account deletion." };
     }
   };
 
@@ -1822,6 +2035,7 @@ const App = () => {
     signup,
     logout,
     updateUser,
+    deleteAccount,
     showAuthModal: () => setIsAuthModalOpen(true),
   };
   

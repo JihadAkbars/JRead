@@ -358,6 +358,13 @@ const Header = () => {
                         Profile
                     </Link>
                     <Link 
+                        to="/bookmarks" 
+                        onClick={() => setIsProfileDropdownOpen(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                        My Bookmarks
+                    </Link>
+                    <Link 
                         to="/settings" 
                         onClick={() => setIsProfileDropdownOpen(false)}
                         className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -482,15 +489,43 @@ const HomePage = () => {
 
 const NovelDetailPage = () => {
     const { id } = useParams();
+    const { user, showAuthModal } = useAuth();
     const [novel, setNovel] = useState<Novel | null>(null);
+    const [isBookmarked, setIsBookmarked] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if(id) {
-            ApiService.getNovel(id).then(data => setNovel(data || null));
-        }
-    }, [id]);
+        if(!id) return;
+        
+        setIsLoading(true);
+        ApiService.getNovel(id).then(data => {
+            setNovel(data || null)
+            
+            if (user && data) {
+                ApiService.isNovelBookmarked(user.id, data.id).then(setIsBookmarked);
+                ApiService.setLastViewedNovel(user.id, data.id); // fire-and-forget
+            }
+        }).finally(() => setIsLoading(false));
 
-    if (!novel) return <div className="text-center py-10">Loading novel...</div>;
+    }, [id, user]);
+    
+    const handleToggleBookmark = async () => {
+        if (!user) {
+            showAuthModal();
+            return;
+        }
+        if (!novel) return;
+
+        if (isBookmarked) {
+            await ApiService.removeBookmark(user.id, novel.id);
+        } else {
+            await ApiService.addBookmark(user.id, novel.id);
+        }
+        setIsBookmarked(!isBookmarked);
+    };
+
+    if (isLoading) return <div className="text-center py-10">Loading novel...</div>;
+    if (!novel) return <div className="text-center py-10">Novel not found.</div>;
 
     return (
         <div className="container mx-auto px-4 py-8">
@@ -510,9 +545,15 @@ const NovelDetailPage = () => {
                     <div className="flex flex-wrap gap-2 mb-6">
                         {novel.tags.map(tag => <span key={tag} className="bg-primary/20 text-primary px-3 py-1 text-sm rounded-full">#{tag}</span>)}
                     </div>
-                    <Link to={`/read/${novel.id}/1`}>
-                        <Button className="w-full md:w-auto">Read First Chapter</Button>
-                    </Link>
+                    <div className="flex items-center gap-2">
+                        <Link to={`/read/${novel.id}/1`}>
+                            <Button className="w-full md:w-auto">Read First Chapter</Button>
+                        </Link>
+                         <Button onClick={handleToggleBookmark} variant="ghost" className="flex items-center gap-2 !px-3" title={isBookmarked ? "Remove from bookmarks" : "Add to bookmarks"}>
+                            <BookmarkIcon className={`w-6 h-6 ${isBookmarked ? 'text-primary' : ''}`} filled={isBookmarked} />
+                            <span className="hidden md:inline">{isBookmarked ? 'Bookmarked' : 'Bookmark'}</span>
+                        </Button>
+                    </div>
                 </div>
             </div>
             <div className="mt-12">
@@ -528,6 +569,9 @@ const NovelDetailPage = () => {
                             </Link>
                         </li>
                     ))}
+                     {novel.chapters?.length === 0 && (
+                        <li className="px-6 py-4 text-center text-gray-500">No chapters have been published yet.</li>
+                    )}
                 </ul>
             </div>
         </div>
@@ -1004,6 +1048,8 @@ const ProfilePage = () => {
     const { userId } = useParams();
     const [profileUser, setProfileUser] = useState<User | null>(null);
     const [userNovels, setUserNovels] = useState<Novel[]>([]);
+    const [bookmarkedNovels, setBookmarkedNovels] = useState<Novel[]>([]);
+    const [lastViewedNovel, setLastViewedNovel] = useState<Novel | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isBecomeAuthorModalOpen, setIsBecomeAuthorModalOpen] = useState(false);
@@ -1015,14 +1061,34 @@ const ProfilePage = () => {
                 return;
             }
             setIsLoading(true);
-            setUserNovels([]); // Reset novels on new user fetch
+            setProfileUser(null);
+            setUserNovels([]);
+            setBookmarkedNovels([]);
+            setLastViewedNovel(null);
+
             try {
                 const user = await ApiService.getUser(userId);
-                setProfileUser(user || null);
-                if (user && (user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN)) {
+                setProfileUser(user);
+                
+                if (!user) return;
+                
+                const isOwnProfile = loggedInUser?.id === user.id;
+
+                if (user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN) {
                     const novels = await ApiService.getNovelsByAuthor(user.id);
-                    setUserNovels(novels.filter(n => n.status === NovelStatus.PUBLISHED));
+                    setUserNovels(novels.filter(n => isOwnProfile || n.status === NovelStatus.PUBLISHED));
                 }
+                
+                if (isOwnProfile || user.activityIsPublic) {
+                    if (user.lastViewedNovelId) {
+                        ApiService.getNovelById(user.lastViewedNovelId).then(setLastViewedNovel);
+                    }
+                }
+
+                if (isOwnProfile || user.bookmarksArePublic) {
+                    ApiService.getBookmarkedNovels(user.id).then(setBookmarkedNovels);
+                }
+
             } catch (error) {
                 console.error("Failed to fetch profile data:", error);
                 setProfileUser(null);
@@ -1031,7 +1097,7 @@ const ProfilePage = () => {
             }
         };
         fetchProfileData();
-    }, [userId, isUpdating]); // Re-fetch data if the user context is updated
+    }, [userId, loggedInUser, isUpdating]);
     
     const isOwnProfile = loggedInUser?.id === profileUser?.id;
 
@@ -1046,6 +1112,9 @@ const ProfilePage = () => {
 
     if (isLoading || isUpdating) return <div className="text-center py-10">Loading profile...</div>;
     if (!profileUser) return <div className="text-center py-10">User not found.</div>;
+    
+    const showBookmarks = isOwnProfile || profileUser.bookmarksArePublic;
+    const showActivity = isOwnProfile || profileUser.activityIsPublic;
 
     return (
         <>
@@ -1067,6 +1136,16 @@ const ProfilePage = () => {
                         </div>
                     </div>
                 </div>
+
+                 { showActivity && lastViewedNovel && (
+                    <div className="mt-8">
+                        <h2 className="text-2xl font-bold mb-4">Last Viewed</h2>
+                        <div className="max-w-xs">
+                           <NovelCard novel={lastViewedNovel} />
+                        </div>
+                    </div>
+                 )}
+
                  {(profileUser.role === UserRole.AUTHOR || profileUser.role === UserRole.ADMIN) && (
                      <div className="mt-8">
                         <h2 className="text-2xl font-bold mb-4">{isOwnProfile ? 'My Published Novels' : `Published Novels by ${profileUser.penName || profileUser.username}`}</h2>
@@ -1075,16 +1154,24 @@ const ProfilePage = () => {
                                 {userNovels.map(novel => <NovelCard key={novel.id} novel={novel} />)}
                             </div>
                          ) : (
-                            <p>This author hasn't published any novels yet.</p>
+                            <p className="text-gray-500 dark:text-gray-400">This author hasn't published any novels yet.</p>
                          )}
                     </div>
                  )}
-                 {profileUser.role === UserRole.USER && !isOwnProfile && (
-                     <div className="mt-8">
-                        <h2 className="text-2xl font-bold mb-4">Reading Activity</h2>
-                        <p>User activity features are coming soon!</p>
+                 
+                 {showBookmarks && (
+                    <div className="mt-8">
+                        <h2 className="text-2xl font-bold mb-4">{isOwnProfile ? 'My Bookmarks' : 'Bookmarked Novels'}</h2>
+                         {bookmarkedNovels.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                                {bookmarkedNovels.map(novel => <NovelCard key={novel.id} novel={novel} />)}
+                            </div>
+                         ) : (
+                            <p className="text-gray-500 dark:text-gray-400">{isOwnProfile ? "You haven't bookmarked any novels yet." : "This user hasn't bookmarked any public novels."}</p>
+                         )}
                     </div>
                  )}
+
             </div>
             {isOwnProfile && isEditModalOpen && <EditProfileModal user={profileUser} isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} />}
             {isOwnProfile && isBecomeAuthorModalOpen && (
@@ -1748,13 +1835,19 @@ const AccountSettingsPage = () => {
     const { user, isUpdating, updateUser, deleteAccount } = useAuth();
     const navigate = useNavigate();
     
+    // State for profile form
     const [username, setUsername] = useState(user?.username || '');
     const [penName, setPenName] = useState(user?.penName || '');
     const [bio, setBio] = useState(user?.bio || '');
     const [profilePicFile, setProfilePicFile] = useState<File | null>(null);
     const [profilePicPreview, setProfilePicPreview] = useState<string | null>(user?.profilePicture || null);
     
-    const [statusMessage, setStatusMessage] = useState({ type: '', text: '' });
+    // State for privacy form
+    // FIX: Explicitly type useState with <boolean> to avoid incorrect type inference of literal types (`true`), and use nullish coalescing (`??`) for correct default value logic.
+    const [bookmarksPublic, setBookmarksPublic] = useState<boolean>(user?.bookmarksArePublic ?? true);
+    const [activityPublic, setActivityPublic] = useState<boolean>(user?.activityIsPublic ?? true);
+
+    const [statusMessage, setStatusMessage] = useState({ id: '', type: '', text: '' });
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1762,6 +1855,13 @@ const AccountSettingsPage = () => {
     useEffect(() => {
         if (!user) {
             navigate('/');
+        } else {
+            setUsername(user.username);
+            setPenName(user.penName || '');
+            setBio(user.bio || '');
+            setProfilePicPreview(user.profilePicture);
+            setBookmarksPublic(user.bookmarksArePublic);
+            setActivityPublic(user.activityIsPublic);
         }
     }, [user, navigate]);
 
@@ -1771,7 +1871,7 @@ const AccountSettingsPage = () => {
 
     const handleProfileUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
-        setStatusMessage({ type: '', text: '' });
+        setStatusMessage({ id: '', type: '', text: '' });
         
         const result = await updateUser({
             username,
@@ -1780,11 +1880,27 @@ const AccountSettingsPage = () => {
         }, profilePicFile || undefined);
 
         if (result.success) {
-            setStatusMessage({ type: 'success', text: 'Profile updated successfully!' });
+            setStatusMessage({ id: 'profile', type: 'success', text: 'Profile updated successfully!' });
         } else {
-            setStatusMessage({ type: 'error', text: result.message || 'Failed to update profile.' });
+            setStatusMessage({ id: 'profile', type: 'error', text: result.message || 'Failed to update profile.' });
         }
         setProfilePicFile(null); // Clear file after submission
+    };
+
+    const handlePrivacyUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setStatusMessage({ id: '', type: '', text: '' });
+        
+        const result = await updateUser({
+            bookmarksArePublic: bookmarksPublic,
+            activityIsPublic: activityPublic,
+        });
+        
+        if (result.success) {
+            setStatusMessage({ id: 'privacy', type: 'success', text: 'Privacy settings saved!' });
+        } else {
+            setStatusMessage({ id: 'privacy', type: 'error', text: result.message || 'Failed to save settings.' });
+        }
     };
     
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1837,9 +1953,42 @@ const AccountSettingsPage = () => {
                             <textarea id="bio" value={bio} onChange={e => setBio(e.target.value)} rows={4} className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary" />
                         </div>
                         <div className="flex justify-end items-center gap-4 pt-2">
-                           {statusMessage.text && <p className={`text-sm ${statusMessage.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>{statusMessage.text}</p>}
+                           {statusMessage.id === 'profile' && statusMessage.text && <p className={`text-sm ${statusMessage.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>{statusMessage.text}</p>}
                             <Button type="submit" disabled={isUpdating}>
                                 {isUpdating ? 'Saving...' : 'Save Changes'}
+                            </Button>
+                        </div>
+                    </form>
+                </div>
+
+                {/* Privacy Settings Section */}
+                <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md p-6 mb-8">
+                    <h2 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">Privacy Settings</h2>
+                    <form onSubmit={handlePrivacyUpdate} className="space-y-6">
+                       <div className="flex items-start">
+                         <div className="flex-grow">
+                            <label htmlFor="publicBookmarks" className="font-medium text-gray-900 dark:text-gray-100">Public Bookmarks</label>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Allow other users to see the novels you have bookmarked on your profile page.</p>
+                         </div>
+                         <label htmlFor="publicBookmarksToggle" className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="publicBookmarksToggle" className="sr-only peer" checked={bookmarksPublic} onChange={() => setBookmarksPublic(!bookmarksPublic)} />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+                         </label>
+                       </div>
+                       <div className="flex items-start">
+                         <div className="flex-grow">
+                            <label htmlFor="publicActivity" className="font-medium text-gray-900 dark:text-gray-100">Public Activity</label>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Allow other users to see your last viewed novel on your profile page.</p>
+                         </div>
+                         <label htmlFor="publicActivityToggle" className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="publicActivityToggle" className="sr-only peer" checked={activityPublic} onChange={() => setActivityPublic(!activityPublic)} />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+                         </label>
+                       </div>
+                       <div className="flex justify-end items-center gap-4 pt-2">
+                           {statusMessage.id === 'privacy' && statusMessage.text && <p className={`text-sm ${statusMessage.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>{statusMessage.text}</p>}
+                            <Button type="submit" disabled={isUpdating}>
+                                {isUpdating ? 'Saving...' : 'Save Privacy Settings'}
                             </Button>
                         </div>
                     </form>
@@ -1867,6 +2016,47 @@ const AccountSettingsPage = () => {
     );
 };
 
+const BookmarksPage = () => {
+    const { user } = useAuth();
+    const [bookmarkedNovels, setBookmarkedNovels] = useState<Novel[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        if (user) {
+            setIsLoading(true);
+            ApiService.getBookmarkedNovels(user.id)
+                .then(setBookmarkedNovels)
+                .finally(() => setIsLoading(false));
+        } else {
+            setIsLoading(false);
+        }
+    }, [user]);
+
+    if (isLoading) {
+        return <div className="text-center py-10">Loading your bookmarks...</div>;
+    }
+
+    if (!user) {
+        return <div className="text-center py-10">Please sign in to see your bookmarks.</div>;
+    }
+
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <h1 className="text-3xl font-bold mb-8">My Bookmarks</h1>
+            {bookmarkedNovels.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                    {bookmarkedNovels.map(novel => <NovelCard key={novel.id} novel={novel} />)}
+                </div>
+            ) : (
+                <div className="text-center py-10 bg-light-surface dark:bg-dark-surface rounded-lg shadow-md">
+                    <p className="text-lg text-gray-500 dark:text-gray-400">You haven't bookmarked any novels yet.</p>
+                    <p className="mt-2 text-gray-400">Click the <BookmarkIcon className="inline-block w-5 h-5 -mt-1" /> icon on a novel's page to save it here.</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 const AppRouter = () => {
   return (
@@ -1880,6 +2070,7 @@ const AppRouter = () => {
       <Route path="/editor/:novelId/:chapterNumber" element={<ChapterEditorPage />} />
       <Route path="/verified-email" element={<EmailVerifiedPage />} />
       <Route path="/settings" element={<AccountSettingsPage />} />
+      <Route path="/bookmarks" element={<BookmarksPage />} />
     </Routes>
   );
 };
@@ -1888,10 +2079,12 @@ const AppRouter = () => {
 // --- APP COMPONENT --- //
 const App = () => {
   const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // FIX: Explicitly type useState with <boolean> to prevent TypeScript from inferring a literal `false` type.
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // FIX: Explicitly type useState with <boolean> to prevent TypeScript from inferring a literal `true` type.
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     if (!supabase) {
@@ -1967,12 +2160,7 @@ const App = () => {
     if (!user || !supabase) return { success: false, message: 'User not authenticated' };
     setIsUpdating(true);
     try {
-        let profileUpdateData: Partial<User> = { 
-            username: updatedData.username,
-            penName: updatedData.penName,
-            bio: updatedData.bio,
-            role: updatedData.role,
-         };
+        let profileUpdateData: Partial<User> = { ...updatedData };
         
         let authUpdateData: { data: any, password?: string } = { data: {
             username: updatedData.username,

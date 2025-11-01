@@ -1,10 +1,10 @@
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
-import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
 import { User, UserRole, Novel, Chapter, Comment, ChangelogEntry, ChangelogChange, ChangelogChangeType } from './types';
 import { ApiService } from './data';
 import { GENRES } from './constants';
-import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon } from './components/Icons';
+import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon, PlusIcon, PencilIcon, TrashIcon } from './components/Icons';
 
 // --- AUTH CONTEXT --- //
 interface AuthContextType {
@@ -29,6 +29,8 @@ interface NovelsContextType {
     novels: Novel[];
     loading: boolean;
     updateNovelInList: (novelId: string, updatedData: Partial<Novel>) => void;
+    addNovelToList: (newNovel: Novel) => void;
+    removeNovelFromList: (novelId: string) => void;
 }
 const NovelsContext = createContext<NovelsContextType | null>(null);
 
@@ -64,8 +66,17 @@ const NovelsProvider = ({ children }: { children: ReactNode }) => {
             )
         );
     };
+    
+    const addNovelToList = (newNovel: Novel) => {
+        setNovels(currentNovels => [newNovel, ...currentNovels]);
+    };
 
-    const value = { novels, loading, updateNovelInList };
+    const removeNovelFromList = (novelId: string) => {
+        setNovels(currentNovels => currentNovels.filter(n => n.id !== novelId));
+    };
+
+    const value = { novels, loading, updateNovelInList, addNovelToList, removeNovelFromList };
+
 
     return <NovelsContext.Provider value={value}>{children}</NovelsContext.Provider>;
 }
@@ -289,6 +300,7 @@ const Header = () => {
   const { isAuthenticated, user, logout, showAuthModal } = useAuth();
   const [isDarkMode, setIsDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   
@@ -309,16 +321,37 @@ const Header = () => {
     setIsDarkMode(!isDarkMode);
     document.documentElement.classList.toggle('dark');
   };
+  
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery('');
+    }
+  };
+  
+  const isAuthor = user?.role === UserRole.AUTHOR || user?.role === UserRole.ADMIN || user?.role === UserRole.OWNER;
 
   return (
     <header className="bg-light-surface dark:bg-dark-surface shadow-md sticky top-0 z-40">
-      <nav className="container mx-auto px-4 py-3 flex justify-between items-center">
-        <Link to="/" className="flex items-center space-x-2">
+      <nav className="container mx-auto px-4 py-3 flex justify-between items-center gap-4">
+        <Link to="/" className="flex items-center space-x-2 flex-shrink-0">
           <BookOpenIcon className="h-8 w-8 text-primary" />
-          <span className="text-2xl font-bold text-light-text dark:text-dark-text">J Read</span>
+          <span className="text-2xl font-bold text-light-text dark:text-dark-text hidden sm:inline">J Read</span>
         </Link>
+        
+        <form onSubmit={handleSearchSubmit} className="w-full max-w-sm relative">
+          <input
+            type="search"
+            placeholder="Search novels..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text border border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+          />
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        </form>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 flex-shrink-0">
           <button onClick={toggleTheme} className="text-gray-600 dark:text-gray-300 hover:text-primary dark:hover:text-primary">
             {isDarkMode ? <SunIcon className="w-6 h-6" /> : <MoonIcon className="w-6 h-6" />}
           </button>
@@ -340,6 +373,15 @@ const Header = () => {
                     >
                         Profile
                     </Link>
+                    {isAuthor && (
+                        <Link 
+                            to="/my-works" 
+                            onClick={() => setIsProfileDropdownOpen(false)}
+                            className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        >
+                            My Works
+                        </Link>
+                    )}
                     <button 
                         onClick={() => { logout(); setIsProfileDropdownOpen(false); navigate('/'); }} 
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -1113,16 +1155,477 @@ const ChangelogPage = () => {
     );
 }
 
+// --- AUTHORING & SEARCH PAGES --- //
+
+const SearchResultsPage = () => {
+    const [searchParams] = useSearchParams();
+    const query = searchParams.get('q') || '';
+    const { novels, loading } = useNovels();
+    const [filteredNovels, setFilteredNovels] = useState<Novel[]>([]);
+
+    useEffect(() => {
+        if (!loading && query) {
+            const lowercasedQuery = query.toLowerCase();
+            const results = novels.filter(novel => 
+                novel.title.toLowerCase().includes(lowercasedQuery) ||
+                novel.authorName.toLowerCase().includes(lowercasedQuery) ||
+                novel.tags.some(tag => tag.toLowerCase().includes(lowercasedQuery))
+            );
+            setFilteredNovels(results);
+        } else {
+            setFilteredNovels([]);
+        }
+    }, [query, novels, loading]);
+
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <h1 className="text-3xl font-bold mb-6 text-light-text dark:text-dark-text">
+                Search Results {query && `for "${query}"`}
+            </h1>
+            {loading ? (
+                 <div className="text-center py-10">Searching...</div>
+            ) : filteredNovels.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                    {filteredNovels.map(novel => <NovelCard key={novel.id} novel={novel} />)}
+                </div>
+            ) : (
+                <p className="text-center py-10 text-gray-500">No novels found matching your search.</p>
+            )}
+        </div>
+    );
+};
+
+const MyWorksPage = () => {
+    const { user } = useAuth();
+    const { removeNovelFromList } = useNovels();
+    const navigate = useNavigate();
+    const [myNovels, setMyNovels] = useState<Novel[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        if (!user || (user.role !== UserRole.AUTHOR && user.role !== UserRole.ADMIN && user.role !== UserRole.OWNER)) {
+            navigate('/');
+            return;
+        }
+
+        const fetchMyNovels = async () => {
+            setIsLoading(true);
+            try {
+                const novels = await ApiService.getNovelsByAuthor(user.id);
+                setMyNovels(novels);
+            } catch (error) {
+                console.error("Failed to fetch author's novels:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchMyNovels();
+    }, [user, navigate]);
+    
+    const handleDeleteNovel = async (novelId: string) => {
+        if (window.confirm('Are you sure you want to permanently delete this novel and all its chapters? This cannot be undone.')) {
+            const { success } = await ApiService.deleteNovel(novelId);
+            if (success) {
+                setMyNovels(prev => prev.filter(n => n.id !== novelId));
+                removeNovelFromList(novelId);
+            } else {
+                alert('Failed to delete the novel.');
+            }
+        }
+    };
+
+    if (isLoading) return <div className="text-center py-10">Loading your works...</div>;
+    
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold">My Works</h1>
+                <Link to="/edit-novel">
+                    <Button variant="secondary" className="flex items-center gap-2">
+                        <PlusIcon className="w-5 h-5"/> New Novel
+                    </Button>
+                </Link>
+            </div>
+            {myNovels.length > 0 ? (
+                <div className="space-y-4">
+                    {myNovels.map(novel => (
+                        <div key={novel.id} className="bg-light-surface dark:bg-dark-surface p-4 rounded-lg shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-4 w-full sm:w-auto">
+                                <img src={novel.coverImage} alt={novel.title} className="w-16 h-24 object-cover rounded-md flex-shrink-0"/>
+                                <div className="flex-grow">
+                                    <h2 className="text-xl font-bold">{novel.title}</h2>
+                                    <p className="text-sm text-gray-500 capitalize">{novel.status}</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0">
+                                <Link to={`/manage-chapters/${novel.id}`}>
+                                    <Button variant="ghost" className="text-sm">Chapters</Button>
+                                </Link>
+                                <Link to={`/edit-novel/${novel.id}`}>
+                                    <Button variant="ghost" className="!p-2"><PencilIcon className="w-5 h-5"/></Button>
+                                </Link>
+                                <Button variant="danger" onClick={() => handleDeleteNovel(novel.id)} className="!p-2"><TrashIcon className="w-5 h-5"/></Button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="text-center py-16 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                    <p className="text-gray-500">You haven't created any novels yet.</p>
+                    <Link to="/edit-novel" className="mt-4 inline-block">
+                        <Button>Create Your First Novel</Button>
+                    </Link>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const EditNovelPage = () => {
+    const { novelId } = useParams();
+    const { user } = useAuth();
+    const navigate = useNavigate();
+    const { updateNovelInList, addNovelToList } = useNovels();
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [title, setTitle] = useState('');
+    const [synopsis, setSynopsis] = useState('');
+    const [genre, setGenre] = useState(GENRES[0]);
+    const [tags, setTags] = useState('');
+    const [status, setStatus] = useState('Draft');
+    const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
+    const [coverImageUrl, setCoverImageUrl] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (novelId) {
+            setIsEditMode(true);
+            const fetchNovel = async () => {
+                const novel = await ApiService.getNovel(novelId);
+                if (novel && user && novel.authorId === user.id) {
+                    setTitle(novel.title);
+                    setSynopsis(novel.synopsis);
+                    setGenre(novel.genre);
+                    setTags(novel.tags.join(', '));
+                    setStatus(novel.status);
+                    setCoverImageUrl(novel.coverImage);
+                } else {
+                    navigate('/my-works'); // Not found or not owner
+                }
+            };
+            fetchNovel();
+        }
+    }, [novelId, user, navigate]);
+
+    const handleCoverImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setCoverImageFile(file);
+            setCoverImageUrl(URL.createObjectURL(file));
+        }
+    };
+    
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+        setIsSubmitting(true);
+        setError('');
+
+        try {
+            let finalCoverImageUrl = coverImageUrl;
+            if (coverImageFile) {
+                const uploadedUrl = await ApiService.uploadCoverImage(coverImageFile);
+                if (!uploadedUrl) throw new Error('Cover image upload failed.');
+                finalCoverImageUrl = uploadedUrl;
+            }
+
+            if (!finalCoverImageUrl) throw new Error('A cover image is required.');
+
+            const novelData = {
+                title,
+                synopsis,
+                genre,
+                tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+                status,
+                coverImage: finalCoverImageUrl,
+                authorId: user.id,
+                language: 'English',
+            };
+
+            if (isEditMode && novelId) {
+                const updatedNovel = await ApiService.updateNovel(novelId, novelData);
+                 if (updatedNovel) {
+                    updateNovelInList(novelId, updatedNovel);
+                 }
+            } else {
+                const newNovel = await ApiService.addNovel(novelData as any);
+                if(newNovel) {
+                    // This is a simplified version; real app might need more user details
+                    addNovelToList({ ...newNovel, authorName: user.penName || user.username });
+                }
+            }
+
+            navigate('/my-works');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <div className="max-w-3xl mx-auto bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-md">
+                <h1 className="text-3xl font-bold mb-6">{isEditMode ? 'Edit Novel' : 'Create New Novel'}</h1>
+                {error && <p className="text-red-500 text-center mb-4 bg-red-100 dark:bg-red-900/50 p-3 rounded-md">{error}</p>}
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="flex flex-col sm:flex-row gap-6 items-start">
+                        <div className="w-full sm:w-1/3">
+                            <label htmlFor="cover-image" className="block text-sm font-medium mb-1">Cover Image</label>
+                            <div className="aspect-[512/800] bg-gray-200 dark:bg-gray-700 rounded-md flex items-center justify-center relative overflow-hidden group">
+                                {coverImageUrl ? (
+                                    <img src={coverImageUrl} alt="Cover preview" className="w-full h-full object-cover" />
+                                ) : (
+                                    <span className="text-gray-500 text-sm p-4 text-center">Click to upload</span>
+                                )}
+                                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <span className="text-white font-semibold">Change</span>
+                                </div>
+                                <input id="cover-image" type="file" accept="image/*" onChange={handleCoverImageChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                            </div>
+                        </div>
+                        <div className="w-full sm:w-2/3 space-y-4">
+                             <div>
+                                <label htmlFor="title" className="block text-sm font-medium mb-1">Title</label>
+                                <Input id="title" type="text" value={title} onChange={e => setTitle(e.target.value)} required />
+                            </div>
+                            <div>
+                                <label htmlFor="synopsis" className="block text-sm font-medium mb-1">Synopsis</label>
+                                <TextArea id="synopsis" rows={6} value={synopsis} onChange={e => setSynopsis(e.target.value)} required />
+                            </div>
+                        </div>
+                    </div>
+                     <div>
+                        <label htmlFor="genre" className="block text-sm font-medium mb-1">Genre</label>
+                        <Select id="genre" value={genre} onChange={e => setGenre(e.target.value)} required>
+                            {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+                        </Select>
+                    </div>
+                    <div>
+                        <label htmlFor="tags" className="block text-sm font-medium mb-1">Tags (comma-separated)</label>
+                        <Input id="tags" type="text" value={tags} onChange={e => setTags(e.target.value)} placeholder="e.g., magic, dragons, academy" />
+                    </div>
+                    <div>
+                        <label htmlFor="status" className="block text-sm font-medium mb-1">Status</label>
+                        <Select id="status" value={status} onChange={e => setStatus(e.target.value)} required>
+                            <option value="Draft">Draft</option>
+                            <option value="Published">Published</option>
+                        </Select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button type="button" variant="ghost" onClick={() => navigate('/my-works')}>Cancel</Button>
+                        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Novel'}</Button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+const ManageChaptersPage = () => {
+    const { novelId } = useParams();
+    const { user } = useAuth();
+    const navigate = useNavigate();
+    const [novel, setNovel] = useState<Novel | null>(null);
+
+    const fetchNovel = async () => {
+        if (novelId) {
+            const novelData = await ApiService.getNovel(novelId);
+            if (novelData && user && novelData.authorId === user.id) {
+                setNovel(novelData);
+            } else {
+                navigate('/my-works');
+            }
+        }
+    };
+
+    useEffect(() => {
+        fetchNovel();
+    }, [novelId, user, navigate]);
+
+    const handleDeleteChapter = async (chapterId: string) => {
+        if (window.confirm('Are you sure you want to delete this chapter?')) {
+            const { success } = await ApiService.deleteChapter(chapterId);
+            if (success) {
+                fetchNovel();
+            } else {
+                alert('Failed to delete chapter.');
+            }
+        }
+    };
+    
+    if (!novel) return <div className="text-center py-10">Loading chapters...</div>;
+
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <div className="max-w-3xl mx-auto">
+                <Button variant="ghost" onClick={() => navigate('/my-works')} className="mb-4 flex items-center gap-2 pl-0">
+                    <ArrowLeftIcon className="w-5 h-5"/> Back to My Works
+                </Button>
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 className="text-3xl font-bold">{novel.title}</h1>
+                        <p className="text-gray-500">Manage Chapters</p>
+                    </div>
+                    <Link to={`/edit-chapter/${novel.id}`}>
+                        <Button variant="secondary" className="flex items-center gap-2">
+                           <PlusIcon className="w-5 h-5"/> New Chapter
+                        </Button>
+                    </Link>
+                </div>
+
+                <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md">
+                    <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {novel.chapters.map(chapter => (
+                            <li key={chapter.id} className="p-4 flex justify-between items-center">
+                                <div>
+                                    <p className="font-semibold">{chapter.chapterNumber}. {chapter.title}</p>
+                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${chapter.isPublished ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                        {chapter.isPublished ? 'Published' : 'Draft'}
+                                    </span>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Link to={`/edit-chapter/${novel.id}/${chapter.id}`}>
+                                        <Button variant="ghost" className="!p-2"><PencilIcon className="w-5 h-5"/></Button>
+                                    </Link>
+                                    <Button variant="danger" onClick={() => handleDeleteChapter(chapter.id)} className="!p-2"><TrashIcon className="w-5 h-5"/></Button>
+                                </div>
+                            </li>
+                        ))}
+                         {novel.chapters.length === 0 && (
+                            <li className="p-8 text-center text-gray-500">This novel has no chapters yet.</li>
+                         )}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const EditChapterPage = () => {
+    const { novelId, chapterId } = useParams();
+    const { user } = useAuth();
+    const navigate = useNavigate();
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [title, setTitle] = useState('');
+    const [content, setContent] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [novel, setNovel] = useState<Novel | null>(null);
+
+    useEffect(() => {
+        const loadData = async () => {
+            if (!novelId || !user) {
+                navigate('/my-works');
+                return;
+            }
+
+            const novelData = await ApiService.getNovel(novelId);
+            if (!novelData || novelData.authorId !== user.id) {
+                navigate('/my-works');
+                return;
+            }
+            setNovel(novelData);
+
+            if (chapterId) {
+                setIsEditMode(true);
+                const chapter = novelData.chapters.find(c => c.id === chapterId);
+                if (chapter) {
+                    setTitle(chapter.title);
+                    setContent(chapter.content);
+                } else {
+                    navigate(`/manage-chapters/${novelId}`);
+                }
+            }
+        };
+        loadData();
+    }, [novelId, chapterId, user, navigate]);
+
+    const handleSubmit = async (publish: boolean) => {
+        if (!novelId || !user || !novel) return;
+        setIsSubmitting(true);
+        
+        try {
+            if (isEditMode && chapterId) {
+                await ApiService.updateChapter(chapterId, { title, content, isPublished: publish });
+            } else {
+                const newChapterNumber = (novel.chapters[novel.chapters.length - 1]?.chapterNumber || 0) + 1;
+                await ApiService.addChapter({
+                    novelId,
+                    title,
+                    content,
+                    chapterNumber: newChapterNumber,
+                    isPublished: publish,
+                });
+            }
+            navigate(`/manage-chapters/${novelId}`);
+        } catch (error) {
+            console.error("Failed to save chapter:", error);
+            alert("Failed to save chapter.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    if (!novel) return <div className="text-center py-10">Loading...</div>;
+
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <div className="max-w-3xl mx-auto">
+                <Button variant="ghost" onClick={() => navigate(`/manage-chapters/${novelId}`)} className="mb-4 flex items-center gap-2 pl-0">
+                    <ArrowLeftIcon className="w-5 h-5"/> Back to Chapters
+                </Button>
+                <h1 className="text-3xl font-bold mb-6">{isEditMode ? 'Edit Chapter' : 'New Chapter'}</h1>
+                <div className="space-y-6">
+                    <div>
+                        <label htmlFor="chapter-title" className="block text-sm font-medium mb-1">Title</label>
+                        <Input id="chapter-title" type="text" value={title} onChange={e => setTitle(e.target.value)} required />
+                    </div>
+                    <div>
+                        <label htmlFor="chapter-content" className="block text-sm font-medium mb-1">Content</label>
+                        <TextArea id="chapter-content" rows={20} value={content} onChange={e => setContent(e.target.value)} required className="font-serif"/>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="ghost" onClick={() => handleSubmit(false)} disabled={isSubmitting}>Save as Draft</Button>
+                        <Button variant="secondary" onClick={() => handleSubmit(true)} disabled={isSubmitting}>
+                            {isSubmitting ? 'Saving...' : (isEditMode ? 'Update & Publish' : 'Publish')}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const AppRouter = () => {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/search" element={<SearchResultsPage />} />
       <Route path="/novel/:id" element={<NovelDetailPage />} />
       <Route path="/read/:novelId/:chapterId" element={<ReaderPage />} />
       <Route path="/user/:userId" element={<ProfilePage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/changelog" element={<ChangelogPage />} />
+
+      {/* Authoring Routes */}
+      <Route path="/my-works" element={<MyWorksPage />} />
+      <Route path="/edit-novel" element={<EditNovelPage />} />
+      <Route path="/edit-novel/:novelId" element={<EditNovelPage />} />
+      <Route path="/manage-chapters/:novelId" element={<ManageChaptersPage />} />
+      <Route path="/edit-chapter/:novelId" element={<EditChapterPage />} />
+      <Route path="/edit-chapter/:novelId/:chapterId" element={<EditChapterPage />} />
     </Routes>
   );
 };
@@ -1244,4 +1747,5 @@ const App = () => {
     </AuthContext.Provider>
   );
 };
+
 export default App;

@@ -65,7 +65,7 @@ const NovelsProvider = ({ children }: { children: ReactNode }) => {
 
     const value = { novels, loading, updateNovelInList };
 
-    return <NovelsContext.Provider value={value}>{children}</NovelsContext.Provider>;
+    return <NovelsContext.Provider value={value}>{children}</NovelsProvider>;
 }
 
 
@@ -968,7 +968,8 @@ const AdminLoginPage = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
         const success = await auth.login(email, password);
         if (success) {
             if (!supabase) return;
-            const { data: { user } } = await supabase.auth.getUser();
+            // FIX: Changed from `await supabase.auth.getUser()` to synchronous `supabase.auth.user()` for Supabase v1 compatibility.
+            const user = supabase.auth.user();
             if (user) {
                 const profile = await ApiService.getUser(user.id);
                 if (profile?.role === UserRole.ADMIN) {
@@ -2232,7 +2233,6 @@ const AccountSettingsPage = () => {
     const [profilePicPreview, setProfilePicPreview] = useState<string | null>(user?.profilePicture || null);
     
     // State for privacy form
-    // FIX: Explicitly type useState with <boolean> to avoid incorrect type inference of literal types (`true`), and use nullish coalescing (`??`) for correct default value logic.
     const [bookmarksPublic, setBookmarksPublic] = useState<boolean>(user?.bookmarksArePublic ?? true);
     const [activityPublic, setActivityPublic] = useState<boolean>(user?.activityIsPublic ?? true);
 
@@ -2654,11 +2654,9 @@ const AppRouter = () => {
 // --- APP COMPONENT --- //
 const App = () => {
   const [user, setUser] = useState<User | null>(null);
-  // FIX: Explicitly type useState with <boolean> to prevent TypeScript from inferring a literal `false` type.
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  // FIX: Explicitly type useState with <boolean> to prevent TypeScript from inferring a literal `true` type.
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -2667,7 +2665,8 @@ const App = () => {
       return;
     }
     
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // FIX: Changed destructuring for Supabase v1 compatibility.
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
       setLoading(false);
       setIsAuthenticated(!!session);
 
@@ -2691,24 +2690,29 @@ const App = () => {
     });
 
     return () => {
-      subscription.unsubscribe();
+      // FIX: Added optional chaining for safety.
+      subscription?.unsubscribe();
     };
   }, []);
 
   const login = async (email: string, pass: string): Promise<boolean> => {
     if (!supabase) return false;
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    // FIX: Changed from `signInWithPassword` to `signIn` for Supabase v1 compatibility.
+    const { error } = await supabase.auth.signIn({ email, password: pass });
     return !error;
   };
   
   const signup = async (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string): Promise<{ success: boolean; message: string; }> => {
     if (!supabase) return { success: false, message: 'Database client not initialized.' };
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password: pass,
-      options: {
-        emailRedirectTo: `${window.location.origin}${window.location.pathname}#/verified-email`,
+    // FIX: Changed to `signUp` with two arguments and `redirectTo` for Supabase v1 compatibility.
+    const { data, error } = await supabase.auth.signUp(
+      {
+        email,
+        password: pass,
+      },
+      {
+        redirectTo: `${window.location.origin}${window.location.pathname}#/verified-email`,
         data: {
           username,
           email,
@@ -2718,7 +2722,7 @@ const App = () => {
           profile_picture: `https://picsum.photos/seed/newUser${Date.now()}/100/100`,
         }
       }
-    });
+    );
 
     if (error) {
       return { success: false, message: error.message };
@@ -2752,7 +2756,8 @@ const App = () => {
         }
         
         // Update auth user metadata
-        const { error: authError } = await supabase.auth.updateUser(authUpdateData);
+        // FIX: Changed from `updateUser` to `update` for Supabase v1 compatibility.
+        const { error: authError } = await supabase.auth.update(authUpdateData);
         if (authError) throw authError;
 
         // Update public profiles table

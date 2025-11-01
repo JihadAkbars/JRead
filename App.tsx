@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -141,10 +143,6 @@ const NovelCard: React.FC<{ novel: Novel }> = ({ novel }) => {
           <div className="flex items-center" title="Rating">
             <StarIcon className="w-4 h-4 text-amber-400 mr-1" filled />
             <span>{novel.rating?.toFixed(1) || '0.0'}</span>
-          </div>
-          <div className="flex items-center" title="Views">
-            <EyeIcon className="w-4 h-4 mr-1" />
-            <span>{novel.views || 0}</span>
           </div>
           <div className="flex items-center" title="Likes">
             <HeartIcon className="w-4 h-4 mr-1 text-red-500" />
@@ -455,7 +453,7 @@ const HomePage = () => {
   const { novels, loading } = useNovels();
   const [displayNovels, setDisplayNovels] = useState<Novel[]>([]);
   const [activeGenre, setActiveGenre] = useState('All');
-  const [sortBy, setSortBy] = useState<'createdAt' | 'views' | 'rating'>('createdAt');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'rating'>('createdAt');
   
   useEffect(() => {
     let processedNovels = [...novels];
@@ -466,7 +464,6 @@ const HomePage = () => {
 
     processedNovels.sort((a, b) => {
         switch (sortBy) {
-            case 'views': return b.views - a.views;
             case 'rating': return b.rating - a.rating;
             case 'createdAt':
             default: return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -478,7 +475,6 @@ const HomePage = () => {
 
   const sortOptions: Record<typeof sortBy, string> = {
     createdAt: 'Latest Releases',
-    views: 'Popular Novels',
     rating: 'Top Rated',
   };
 
@@ -496,7 +492,6 @@ const HomePage = () => {
                     className="bg-light-surface dark:bg-dark-surface border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1.5 focus:ring-primary focus:border-primary"
                   >
                       <option value="createdAt">Latest</option>
-                      <option value="views">Popularity</option>
                       <option value="rating">Rating</option>
                   </select>
               </div>
@@ -610,33 +605,6 @@ const NovelDetailPage = () => {
 
         loadData();
     }, [id, user]);
-
-    useEffect(() => {
-        if (isLoading || !novel || !id || !user) {
-            return;
-        }
-
-        const incrementView = async () => {
-            const viewIncrementedInSession = sessionStorage.getItem(`viewed_novel_${id}`);
-            const isAuthor = user.id === novel.authorId;
-
-            if (!isAuthor && !viewIncrementedInSession) {
-                sessionStorage.setItem(`viewed_novel_${id}`, 'true'); // Set immediately to prevent re-triggers
-                const { success } = await ApiService.incrementViews(id);
-
-                if (success) {
-                    // Re-fetch the novel to get the updated count from the DB
-                    const updatedNovel = await ApiService.getNovel(id);
-                    if (updatedNovel) {
-                        setNovel(updatedNovel);
-                        updateNovelInList(id, { views: updatedNovel.views });
-                    }
-                }
-            }
-        };
-
-        incrementView();
-    }, [isLoading, novel, id, user, updateNovelInList]);
     
     const handleToggleBookmark = async () => {
         if (!user) { showAuthModal(); return; }
@@ -704,10 +672,6 @@ const NovelDetailPage = () => {
                     <Link to={`/user/${novel.authorId}`} className="text-lg text-gray-600 dark:text-gray-400 mt-2 hover:text-primary">by {novel.authorName}</Link>
                     
                     <div className="flex items-center gap-6 my-4 text-gray-600 dark:text-gray-400 border-y py-3 border-gray-200 dark:border-gray-700">
-                        <div className="text-center">
-                            <p className="text-2xl font-bold text-light-text dark:text-dark-text">{novel.views?.toLocaleString() || 0}</p>
-                            <p className="text-sm">Views</p>
-                        </div>
                          <div className="text-center">
                             <p className="text-2xl font-bold text-light-text dark:text-dark-text">{novel.likes?.toLocaleString() || 0}</p>
                             <p className="text-sm">Likes</p>
@@ -764,10 +728,6 @@ const NovelDetailPage = () => {
                                         {chapter.chapterNumber}. {chapter.title}
                                     </p>
                                     <div className="flex items-center gap-4 flex-shrink-0">
-                                        <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400" title="Views">
-                                            <EyeIcon className="w-4 h-4" />
-                                            <span>{chapter.views?.toLocaleString() || 0}</span>
-                                        </div>
                                         <ArrowRightIcon className="w-5 h-5 text-gray-400"/>
                                     </div>
                                 </div>
@@ -869,35 +829,6 @@ const ReaderPage = () => {
             }
         };
     }, [user, novelId, chapter]);
-
-    useEffect(() => {
-        if (!chapter || !novel || !user) return;
-
-        const incrementView = async () => {
-            const viewIncrementedInSession = sessionStorage.getItem(`viewed_chapter_${chapter.id}`);
-            const isAuthor = user.id === novel.authorId;
-
-            if (!isAuthor && !viewIncrementedInSession) {
-                sessionStorage.setItem(`viewed_chapter_${chapter.id}`, 'true'); // Set immediately
-                const { success } = await ApiService.incrementViews(novel.id, chapter.id);
-
-                if (success) {
-                    // Re-fetch the novel to get the true, updated view counts
-                    const updatedNovel = await ApiService.getNovel(novel.id);
-                    if (updatedNovel) {
-                        setNovel(updatedNovel);
-                        // Also update the specific chapter state from the newly fetched data
-                        const updatedChapter = updatedNovel.chapters.find(c => c.id === chapter.id);
-                        if (updatedChapter) {
-                            setChapter(updatedChapter);
-                        }
-                    }
-                }
-            }
-        };
-
-        incrementView();
-    }, [chapter, novel, user]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -2137,7 +2068,7 @@ const AuthorDashboardPage = () => {
                                     <div className="flex-grow min-w-0">
                                             <p className="font-semibold text-lg truncate">{novel.title}</p>
                                             <p className={`text-sm font-medium ${novel.status === NovelStatus.PUBLISHED ? 'text-green-500' : 'text-yellow-500'}`}>{novel.status}</p>
-                                            <p className="text-xs text-gray-500">{novel.views} views • {novel.likes} likes</p>
+                                            <p className="text-xs text-gray-500">{novel.likes} likes</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-4">

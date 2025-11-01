@@ -257,6 +257,41 @@ export const ApiService = {
       return { success: !error };
   },
 
+  async getReadingProgress(userId: string, novelId: string): Promise<{ chapterId: string, chapterNumber: number, scrollPositionPercent: number } | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+        .from('reading_progress')
+        .select('chapter_id, scroll_position_percent, chapters(chapter_number)')
+        .eq('user_id', userId)
+        .eq('novel_id', novelId)
+        .single();
+
+    if (error || !data || !data.chapters) {
+        return null;
+    }
+    
+    // Supabase returns related table as an object if it's a to-one relationship
+    const chapter = data.chapters as { chapter_number: number };
+
+    return {
+        chapterId: data.chapter_id,
+        chapterNumber: chapter.chapter_number,
+        scrollPositionPercent: data.scroll_position_percent
+    };
+  },
+
+  async saveReadingProgress(userId: string, novelId: string, chapterId: string, scrollPositionPercent: number): Promise<{ success: boolean }> {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.from('reading_progress').upsert({
+        user_id: userId,
+        novel_id: novelId,
+        chapter_id: chapterId,
+        scroll_position_percent: scrollPositionPercent,
+        updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id, novel_id' });
+    
+    return { success: !error };
+  },
 
   // --- UPLOAD METHOD EXPORT --- //
   uploadProfilePicture: (file: File) => uploadFile('profile_pictures', file),

@@ -161,8 +161,20 @@ export const ApiService = {
       return { success: !error };
   },
 
+/*
+====================================================================================
+== IMPORTANT: ADMIN BACKEND SETUP
+====================================================================================
+The following admin functions require you to create corresponding procedures (RPCs)
+in your Supabase project. Without them, admins will not be able to delete novels
+or other users.
+
+Please go to your Supabase project's SQL Editor and run the scripts below.
+====================================================================================
+*/
+
   /* 
-    --- ADMIN-ONLY FUNCTION ---
+    --- ADMIN-ONLY FUNCTION (1/2): Delete Novel ---
     NOTE: For this to work, you must create a corresponding RPC function in your Supabase project.
     Go to the Supabase SQL Editor and run the following script:
 
@@ -192,17 +204,18 @@ export const ApiService = {
     -- The security check inside the function ensures only admins can successfully execute it.
     grant execute on function public.admin_delete_novel(uuid) to authenticated;
   */
-  async adminDeleteNovel(novelId: string): Promise<{ success: boolean }> {
-      if (!supabase) return { success: false };
+  async adminDeleteNovel(novelId: string): Promise<{ success: boolean; error?: any }> {
+      if (!supabase) return { success: false, error: 'Supabase client not initialized.' };
       const { error } = await supabase.rpc('admin_delete_novel', { novel_id_to_delete: novelId });
       if (error) {
           console.error('Error deleting novel via admin RPC:', error);
+          return { success: false, error };
       }
-      return { success: !error };
+      return { success: true };
   },
   
   /* 
-    --- ADMIN-ONLY FUNCTION ---
+    --- ADMIN-ONLY FUNCTION (2/2): Delete User ---
     NOTE: For this to work, you must create a corresponding RPC function in your Supabase project.
     Go to the Supabase SQL Editor and run the following script:
 
@@ -232,13 +245,14 @@ export const ApiService = {
     -- The security check inside the function ensures only admins can successfully execute it.
     grant execute on function public.admin_delete_user(uuid) to authenticated;
   */
-  async adminDeleteUser(userId: string): Promise<{ success: boolean }> {
-      if (!supabase) return { success: false };
+  async adminDeleteUser(userId: string): Promise<{ success: boolean; error?: any }> {
+      if (!supabase) return { success: false, error: 'Supabase client not initialized.' };
       const { error } = await supabase.rpc('admin_delete_user', { user_id_to_delete: userId });
       if (error) {
           console.error('Error deleting user via admin RPC:', error);
+          return { success: false, error };
       }
-      return { success: !error };
+      return { success: true };
   },
 
   // --- CHAPTER METHODS --- //

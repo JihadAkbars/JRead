@@ -1684,22 +1684,33 @@ const App = () => {
 
     setLoading(true);
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        if (session?.user) {
+      setIsAuthenticated(!!session);
+
+      if (session?.user) {
+        try {
           const profile = await ApiService.getUser(session.user.id);
-          setUser(profile);
-          setIsAuthenticated(!!profile);
-        } else {
+          if (profile) {
+            setUser(profile);
+          } else {
+            // This handles a case where an auth user exists but has no profile row.
+            // This can happen due to race conditions or if the profile creation trigger fails.
+            // Logging out is the safest action to prevent an inconsistent state.
+            console.warn("No profile found for authenticated user. Logging out.");
+            await supabase.auth.signOut();
+            setUser(null);
+            setIsAuthenticated(false);
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
           setUser(null);
           setIsAuthenticated(false);
         }
-      } catch (error) {
-        console.error("Error in onAuthStateChange callback:", error);
+      } else {
         setUser(null);
-        setIsAuthenticated(false);
-      } finally {
-        setLoading(false);
       }
+      
+      // The app is considered "loaded" once the session status is determined.
+      setLoading(false);
     });
 
     return () => {

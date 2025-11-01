@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -614,22 +616,28 @@ const NovelDetailPage = () => {
 
     useEffect(() => {
         // This effect handles the time-based view increment logic.
-        if (isLoading || !novel || !id) {
+        if (isLoading || !novel || !id || !user) {
             return;
         }
 
-        const viewIncrementedInSession = sessionStorage.getItem(`viewed_${id}`);
-        const isAuthor = user && user.id === novel.authorId;
+        const viewIncrementedInSession = sessionStorage.getItem(`viewed_novel_${id}`);
+        const isAuthor = user.id === novel.authorId;
 
         if (!isAuthor && !viewIncrementedInSession) {
-            viewTimerRef.current = window.setTimeout(() => {
-                ApiService.incrementNovelView(id);
-                sessionStorage.setItem(`viewed_${id}`, 'true');
-                
-                const newViews = (novel.views || 0) + 1;
-                setNovel(prev => prev ? { ...prev, views: newViews } : null);
-                updateNovelInList(id, { views: newViews });
+            viewTimerRef.current = window.setTimeout(async () => {
+                if (!id) return;
+    
+                const { success } = await ApiService.incrementViews(id);
 
+                if (success) {
+                    sessionStorage.setItem(`viewed_novel_${id}`, 'true');
+                    // Re-fetch the novel to get the updated count from the DB
+                    const updatedNovel = await ApiService.getNovel(id);
+                    if (updatedNovel) {
+                        setNovel(updatedNovel);
+                        updateNovelInList(id, { views: updatedNovel.views });
+                    }
+                }
             }, 60000); // 1 minute
         }
 
@@ -876,34 +884,29 @@ const ReaderPage = () => {
     }, [user, novelId, chapter]);
 
     useEffect(() => {
-        // This effect handles the time-based chapter view increment logic.
-        if (!chapter || !novel) return;
+        if (!chapter || !novel || !user) return;
 
         const viewIncrementedInSession = sessionStorage.getItem(`viewed_chapter_${chapter.id}`);
-        const isAuthor = user && user.id === novel.authorId;
+        const isAuthor = user.id === novel.authorId;
 
         if (!isAuthor && !viewIncrementedInSession) {
-            viewTimerRef.current = window.setTimeout(() => {
-                ApiService.incrementChapterView(chapter.id);
-                sessionStorage.setItem(`viewed_chapter_${chapter.id}`, 'true');
-                
-                // FIX: The original code only updated `chapter` state, creating an inconsistency
-                // with the main `novel` state object. This new code updates both.
-                
-                const newViews = (chapter.views || 0) + 1;
+            viewTimerRef.current = window.setTimeout(async () => {
+                if (!novel || !chapter) return;
+                const { success } = await ApiService.incrementViews(novel.id, chapter.id);
 
-                // 1. Optimistically update the current chapter's state
-                setChapter(prev => prev ? { ...prev, views: newViews } : null);
-
-                // 2. Also update the corresponding chapter within the main novel state object
-                //    to ensure consistency across the component.
-                setNovel(prevNovel => {
-                    if (!prevNovel) return null;
-                    const updatedChapters = prevNovel.chapters.map(c => 
-                        c.id === chapter.id ? { ...c, views: newViews } : c
-                    );
-                    return { ...prevNovel, chapters: updatedChapters };
-                });
+                if (success) {
+                    sessionStorage.setItem(`viewed_chapter_${chapter.id}`, 'true');
+                    // Re-fetch the novel to get the true, updated view counts
+                    const updatedNovel = await ApiService.getNovel(novel.id);
+                    if (updatedNovel) {
+                        setNovel(updatedNovel);
+                        // Also update the specific chapter state from the newly fetched data
+                        const updatedChapter = updatedNovel.chapters.find(c => c.id === chapter.id);
+                        if (updatedChapter) {
+                            setChapter(updatedChapter);
+                        }
+                    }
+                }
             }, 60000); // 1 minute
         }
 

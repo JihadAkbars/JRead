@@ -1,7 +1,5 @@
-
-
 import { supabase } from './supabaseClient';
-import { User, Novel, Chapter, Comment } from './types';
+import { User, Novel, Chapter, Comment, ChangelogEntry } from './types';
 
 // Helper to convert snake_case from Supabase to camelCase for the app
 const toCamelCase = (obj: any): any => {
@@ -161,6 +159,34 @@ export const ApiService = {
           { onConflict: 'user_id, novel_id' }
       );
       return { success: !error };
+  },
+
+  // --- CHANGELOG METHODS --- //
+  async getChangelogs(): Promise<ChangelogEntry[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase.from('changelogs').select('*').order('date', { ascending: false });
+    if (error) throw error;
+    return toCamelCase(data) as ChangelogEntry[];
+  },
+
+  async addChangelog(entry: Omit<ChangelogEntry, 'id' | 'created_at'>): Promise<ChangelogEntry | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('changelogs').insert(entry).select().single();
+    if (error) throw error;
+    return toCamelCase(data) as ChangelogEntry;
+  },
+
+  async updateChangelog(id: string, updates: Partial<Omit<ChangelogEntry, 'id' | 'created_at'>>): Promise<ChangelogEntry | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('changelogs').update(updates).eq('id', id).select().single();
+    if (error) throw error;
+    return toCamelCase(data) as ChangelogEntry;
+  },
+
+  async deleteChangelog(id: string): Promise<{ success: boolean }> {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.from('changelogs').delete().eq('id', id);
+    return { success: !error };
   },
 
   // --- UPLOAD METHOD EXPORT --- //

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -1668,6 +1667,14 @@ const AuthorDashboardPage = () => {
 };
 
 const EmailVerifiedPage = () => {
+    const { showAuthModal } = useAuth();
+    const navigate = useNavigate();
+
+    const handleLoginClick = () => {
+        navigate('/');
+        showAuthModal();
+    };
+
     return (
         <div className="container mx-auto px-4 py-16 text-center">
             <div className="bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-lg max-w-md mx-auto">
@@ -1676,27 +1683,15 @@ const EmailVerifiedPage = () => {
                 </svg>
                 <h1 className="text-3xl font-bold text-light-text dark:text-dark-text mt-4">Email Verified!</h1>
                 <p className="text-gray-600 dark:text-gray-400 mt-2">
-                    Thank you for confirming your email. You can now explore all the features of J Read.
+                    Your email has been verified, please log in.
                 </p>
-                <Link to="/">
-                    <Button className="mt-6">Start Reading</Button>
-                </Link>
+                <Button onClick={handleLoginClick} className="mt-6">Login</Button>
             </div>
         </div>
     );
 };
 
 const AppRouter = () => {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const currentHash = window.location.hash;
-    // Supabase redirects with #access_token=...&type=signup
-    if (currentHash.includes('type=signup') && !currentHash.includes('/verified-email')) {
-      navigate('/verified-email', { replace: true });
-    }
-  }, [navigate]);
-
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
@@ -1767,6 +1762,7 @@ const App = () => {
       email,
       password: pass,
       options: {
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}#/verified-email`,
         data: {
           username,
           email,

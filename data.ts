@@ -277,50 +277,73 @@ export const ApiService = {
   },
 
   // --- ACTIVITY & INTERACTION METHODS --- //
+  /*
+    --- ROBUST VIEW COUNTING - DATABASE SETUP ---
+    This new, simplified system uses a single database function to increment view counts.
+    This avoids the complexity of triggers and is more reliable.
+
+    ==> REQUIRED ACTION: Please run this entire SQL script in your Supabase SQL Editor. <==
+
+    -- This script is idempotent, meaning you can run it multiple times without causing issues.
+    
+    -- STEP 1: Ensure the `views` columns exist on your tables. This is non-destructive.
+    ALTER TABLE public.novels ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
+    ALTER TABLE public.chapters ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
+
+    -- STEP 2: Create a single function to handle incrementing views.
+    CREATE OR REPLACE FUNCTION public.increment_views(
+      p_novel_id uuid,
+      p_chapter_id uuid DEFAULT NULL
+    )
+    RETURNS void
+    LANGUAGE plpgsql
+    SECURITY DEFINER -- Essential: Allows the function to bypass RLS to update counts.
+    AS $$
+    BEGIN
+      -- Always increment the parent novel's view count
+      UPDATE public.novels
+      SET views = views + 1
+      WHERE id = p_novel_id;
+      
+      -- Increment chapter view count if a chapter_id is provided
+      IF p_chapter_id IS NOT NULL THEN
+        UPDATE public.chapters
+        SET views = views + 1
+        WHERE id = p_chapter_id;
+      END IF;
+    END;
+    $$;
+    
+    -- STEP 3: Grant permission for authenticated users to call this function.
+    GRANT EXECUTE ON FUNCTION public.increment_views(uuid, uuid) TO authenticated;
+
+    -- STEP 4: (Optional Cleanup) You can now safely remove the old view tracking table and trigger if you ran the previous script.
+    -- DROP TRIGGER IF EXISTS on_view_event_insert ON public.view_events;
+    -- DROP FUNCTION IF EXISTS public.handle_new_view_event();
+    -- DROP TABLE IF EXISTS public.view_events;
+  */
   async setLastViewedNovel(userId: string, novelId: string): Promise<void> {
     await supabase.from('profiles').update({ last_viewed_novel_id: novelId }).eq('id', userId);
   },
 
-  async incrementNovelView(novelId: string): Promise<void> {
-    if (!supabase) return;
-    // REQUIRED: This function must be created in the Supabase SQL Editor to bypass RLS.
-    // CREATE OR REPLACE FUNCTION increment_novel_view(novel_id_to_increment uuid)
-    // RETURNS void
-    // LANGUAGE sql
-    // SECURITY DEFINER
-    // AS $$
-    //   UPDATE public.novels
-    //   SET views = views + 1
-    //   WHERE id = novel_id_to_increment;
-    // $$;
-    //
-    // -- Then, grant permission to all authenticated users to call it
-    // GRANT EXECUTE ON FUNCTION public.increment_novel_view(uuid) TO authenticated;
-    const { error } = await supabase.rpc('increment_novel_view', { novel_id_to_increment: novelId });
-    if (error) {
-        console.error("Error incrementing novel view:", error);
-    }
-  },
-  
-  async incrementChapterView(chapterId: string): Promise<void> {
-    if (!supabase) return;
-    // REQUIRED: This function must be created in the Supabase SQL Editor to bypass RLS.
-    // CREATE OR REPLACE FUNCTION increment_chapter_view(chapter_id_to_increment uuid)
-    // RETURNS void
-    // LANGUAGE sql
-    // SECURITY DEFINER
-    // AS $$
-    //   UPDATE public.chapters
-    //   SET views = views + 1
-    //   WHERE id = chapter_id_to_increment;
-    // $$;
-    //
-    // -- Then, grant permission to all authenticated users to call it
-    // GRANT EXECUTE ON FUNCTION public.increment_chapter_view(uuid) TO authenticated;
-    const { error } = await supabase.rpc('increment_chapter_view', { chapter_id_to_increment: chapterId });
-    if (error) {
-        console.error("Error incrementing chapter view:", error);
-    }
+  async incrementViews(novelId: string, chapterId?: string): Promise<{ success: boolean }> {
+      if (!supabase) return { success: false };
+
+      const params: { p_novel_id: string, p_chapter_id?: string } = {
+          p_novel_id: novelId,
+      };
+      if (chapterId) {
+          params.p_chapter_id = chapterId;
+      }
+
+      const { error } = await supabase.rpc('increment_views', params);
+      
+      if (error) {
+          console.error("Error incrementing views:", error);
+          return { success: false };
+      }
+      
+      return { success: true };
   },
 
   async getUserInteractionStatus(novelId: string, userId: string): Promise<{ hasLiked: boolean, userRating: number | null }> {

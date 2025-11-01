@@ -1,3 +1,6 @@
+
+
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -130,7 +133,7 @@ const SupabaseCredentialsWarning = () => (
 const NovelCard: React.FC<{ novel: Novel }> = ({ novel }) => {
   return (
     <Link to={`/novel/${novel.id}`} className="group block bg-light-surface dark:bg-dark-surface rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300">
-      <div className="relative aspect-[1.6/1] bg-gray-200 dark:bg-gray-700">
+      <div className="relative aspect-[512/800] bg-gray-200 dark:bg-gray-700">
         <img src={novel.coverImage} alt={novel.title} className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black bg-opacity-20 group-hover:bg-opacity-40 transition-all duration-300"></div>
       </div>
@@ -663,7 +666,7 @@ const NovelDetailPage = () => {
         <div className="container mx-auto px-4 py-8">
             <div className="flex flex-col md:flex-row gap-8">
                 <div className="md:w-1/3 flex-shrink-0">
-                    <img src={novel.coverImage} alt={novel.title} className="w-full rounded-lg shadow-lg aspect-[1.6/1] object-cover"/>
+                    <img src={novel.coverImage} alt={novel.title} className="w-full rounded-lg shadow-lg aspect-[512/800] object-cover"/>
                 </div>
                 <div className="md:w-2/3">
                     <h1 className="text-4xl font-bold text-light-text dark:text-dark-text">{novel.title}</h1>
@@ -1639,8 +1642,8 @@ const CreateNovelModal = ({ isOpen, onClose, onNovelCreated }: { isOpen: boolean
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Cover Image</label>
                         <div className="mt-1 flex items-center gap-4 p-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md">
                             {coverImagePreview ? 
-                                <img src={coverImagePreview} alt="Cover preview" className="w-32 h-20 object-cover rounded"/> :
-                                <div className="w-32 h-20 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
+                                <img src={coverImagePreview} alt="Cover preview" className="w-24 h-40 object-cover rounded"/> :
+                                <div className="w-24 h-40 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
                             }
                              <Button type="button" variant="ghost" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2">
                                 <UploadIcon className="w-5 h-5"/>
@@ -1648,6 +1651,9 @@ const CreateNovelModal = ({ isOpen, onClose, onNovelCreated }: { isOpen: boolean
                             </Button>
                             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden"/>
                         </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            Standard Size: 512 x 800 pixels. Alternative sizes: 256 x 400 or 768 x 1200. Using the recommended size avoids cropping.
+                        </p>
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Genre</label>
@@ -1766,8 +1772,8 @@ const EditNovelModal = ({ novel, isOpen, onClose, onNovelUpdated }: { novel: Nov
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Cover Image</label>
                         <div className="mt-1 flex items-center gap-4 p-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md">
                             {coverImagePreview ? 
-                                <img src={coverImagePreview} alt="Cover preview" className="w-32 h-20 object-cover rounded"/> :
-                                <div className="w-32 h-20 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
+                                <img src={coverImagePreview} alt="Cover preview" className="w-24 h-40 object-cover rounded"/> :
+                                <div className="w-24 h-40 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
                             }
                              <Button type="button" variant="ghost" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2">
                                 <UploadIcon className="w-5 h-5"/>
@@ -1775,6 +1781,9 @@ const EditNovelModal = ({ novel, isOpen, onClose, onNovelUpdated }: { novel: Nov
                             </Button>
                             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden"/>
                         </div>
+                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            Standard Size: 512 x 800 pixels. Alternative sizes: 256 x 400 or 768 x 1200. Using the recommended size avoids cropping.
+                        </p>
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Genre</label>

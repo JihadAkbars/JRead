@@ -336,12 +336,19 @@ const Header = () => {
   return (
     <header className="bg-light-surface dark:bg-dark-surface shadow-md sticky top-0 z-40">
       <nav className="container mx-auto px-4 py-3 flex justify-between items-center gap-4">
-        <Link to="/" className="flex items-center space-x-2 flex-shrink-0">
-          <BookOpenIcon className="h-8 w-8 text-primary" />
-          <span className="text-2xl font-bold text-light-text dark:text-dark-text hidden sm:inline">J Read</span>
-        </Link>
+        <div className="flex items-center gap-4">
+            <Link to="/" className="flex items-center space-x-2 flex-shrink-0">
+              <BookOpenIcon className="h-8 w-8 text-primary" />
+              <span className="text-2xl font-bold text-light-text dark:text-dark-text hidden sm:inline">J Read</span>
+            </Link>
+            {isAdmin && (
+                <Link to="/admin-panel" className="hidden sm:inline-block">
+                    <Button variant="secondary" className="!py-1.5 !px-3 text-sm">Admin Panel</Button>
+                </Link>
+            )}
+        </div>
         
-        <form onSubmit={handleSearchSubmit} className="w-full max-w-sm relative">
+        <form onSubmit={handleSearchSubmit} className="w-full max-w-sm relative hidden md:block">
           <input
             type="search"
             placeholder="Search novels..."
@@ -387,7 +394,7 @@ const Header = () => {
                         <Link 
                             to="/admin-panel" 
                             onClick={() => setIsProfileDropdownOpen(false)}
-                            className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 sm:hidden"
                         >
                             Admin Panel
                         </Link>

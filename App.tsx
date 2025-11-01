@@ -1028,11 +1028,107 @@ const AdminLoginPage = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
     );
 };
 
+const AdminSetupInstructions = ({ type, onClose }: { type: 'novel' | 'user', onClose: () => void }) => {
+    const [copySuccess, setCopySuccess] = useState('');
+    const functionName = type === 'novel' ? 'admin_delete_novel' : 'admin_delete_user';
+    const action = type === 'novel' ? 'delete any novel' : 'delete any user';
+
+    const novelSql = `CREATE OR REPLACE FUNCTION admin_delete_novel(novel_id_to_delete uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  caller_role text;
+BEGIN
+  -- Check if the user calling this function is an ADMIN
+  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
+
+  IF caller_role = 'ADMIN' THEN
+    -- If they are an admin, proceed with deleting the novel
+    DELETE FROM public.novels WHERE id = novel_id_to_delete;
+  ELSE
+    -- Otherwise, raise an exception
+    RAISE EXCEPTION 'Permission denied: You must be an admin to delete novels.';
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_delete_novel(uuid) TO authenticated;`;
+
+    const userSql = `CREATE OR REPLACE FUNCTION admin_delete_user(user_id_to_delete uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  caller_role text;
+BEGIN
+  -- Check if the user calling this function is an ADMIN
+  SELECT role INTO caller_role FROM public.profiles WHERE id = auth.uid();
+
+  IF caller_role = 'ADMIN' THEN
+    -- If they are an admin, proceed with deleting the target user from the auth schema
+    DELETE FROM auth.users WHERE id = user_id_to_delete;
+  ELSE
+    -- Otherwise, raise an exception
+    RAISE EXCEPTION 'Permission denied: You must be an admin to delete users.';
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_delete_user(uuid) TO authenticated;`;
+
+    const sqlToCopy = type === 'novel' ? novelSql : userSql;
+
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(sqlToCopy).then(() => {
+            setCopySuccess('Copied!');
+            setTimeout(() => setCopySuccess(''), 2000);
+        }, () => {
+            setCopySuccess('Failed to copy.');
+        });
+    };
+
+    return (
+        <Modal isOpen={true} onClose={onClose}>
+            <div className="max-w-xl">
+                 <h2 className="text-2xl font-bold mb-2 text-yellow-500">Backend Setup Required</h2>
+                 <p className="mb-4 text-gray-600 dark:text-gray-400">
+                     The <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded text-sm">{functionName}</code> function is missing in your database. This special function is required for admins to {action}.
+                 </p>
+                 <div className="space-y-3 text-sm">
+                    <p><strong>1. Copy the SQL code below.</strong></p>
+                    <div className="relative bg-gray-100 dark:bg-gray-900 p-3 rounded-md font-mono text-xs max-h-48 overflow-y-auto">
+                        <pre className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{sqlToCopy}</pre>
+                        <Button onClick={copyToClipboard} variant="ghost" className="!absolute top-2 right-2 !px-2 !py-1 text-xs">
+                           {copySuccess || 'Copy SQL'}
+                        </Button>
+                    </div>
+                    <p><strong>2. Go to your Supabase project's SQL Editor.</strong></p>
+                    <a href="https://supabase.com/dashboard/project/_/sql" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                        Open Supabase SQL Editor &rarr;
+                    </a>
+                    <p><strong>3. Paste the code and click "RUN".</strong></p>
+                    <p>Once the script has successfully run, close this window and try the delete action again.</p>
+                 </div>
+                 <div className="flex justify-end mt-6">
+                    <Button onClick={onClose} variant="primary">Got it, Close</Button>
+                 </div>
+            </div>
+        </Modal>
+    );
+};
+
+
 const AdminDashboard = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [novels, setNovels] = useState<Novel[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [setupError, setSetupError] = useState<'novel' | 'user' | null>(null);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -1054,12 +1150,12 @@ const AdminDashboard = () => {
                 setUsers(prev => prev.filter(u => u.id !== userId));
                 alert(`Successfully deleted user "${username}".`);
             } else {
-                let errorMessage = `Failed to delete user "${username}". Check the console for details.`;
                 const errorMsgLower = error?.message?.toLowerCase() || '';
                 if (errorMsgLower.includes('function admin_delete_user') && errorMsgLower.includes('does not exist')) {
-                    errorMessage = `Failed to delete user "${username}".\n\nREASON: The required backend function ('admin_delete_user') is missing.\n\nFIX: Please go to the 'data.ts' file, copy the SQL script from the comments above the 'adminDeleteUser' function, and run it in your Supabase SQL Editor to create the function.`;
+                    setSetupError('user');
+                } else {
+                    alert(`Failed to delete user "${username}". Check the console for more details.`);
                 }
-                alert(errorMessage);
             }
         }
     };
@@ -1071,12 +1167,12 @@ const AdminDashboard = () => {
                 setNovels(prev => prev.filter(n => n.id !== novelId));
                 alert(`Successfully deleted novel "${title}".`);
             } else {
-                let errorMessage = `Failed to delete novel "${title}". Check the console for details.`;
                 const errorMsgLower = error?.message?.toLowerCase() || '';
                 if (errorMsgLower.includes('function admin_delete_novel') && errorMsgLower.includes('does not exist')) {
-                    errorMessage = `Failed to delete novel "${title}".\n\nREASON: The required backend function ('admin_delete_novel') is missing.\n\nFIX: Please go to the 'data.ts' file, copy the SQL script from the comments above the 'adminDeleteNovel' function, and run it in your Supabase SQL Editor to create the function.`;
+                    setSetupError('novel');
+                } else {
+                    alert(`Failed to delete novel "${title}". Check the console for more details.`);
                 }
-                alert(errorMessage);
             }
         }
     };
@@ -1090,6 +1186,7 @@ const AdminDashboard = () => {
 
     return (
         <>
+            {setupError && <AdminSetupInstructions type={setupError} onClose={() => setSetupError(null)} />}
             <div className="container mx-auto px-4 py-8">
                 <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

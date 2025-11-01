@@ -161,11 +161,82 @@ export const ApiService = {
       return { success: !error };
   },
 
+  /* 
+    --- ADMIN-ONLY FUNCTION ---
+    NOTE: For this to work, you must create a corresponding RPC function in your Supabase project.
+    Go to the Supabase SQL Editor and run the following script:
+
+    create or replace function admin_delete_novel(novel_id_to_delete uuid)
+    returns void
+    language plpgsql
+    security definer
+    set search_path = public
+    as $$
+    declare
+      caller_role text;
+    begin
+      -- Check if the user calling this function is an ADMIN
+      select role into caller_role from public.profiles where id = auth.uid();
+
+      if caller_role = 'ADMIN' then
+        -- If they are an admin, proceed with deleting the novel
+        delete from public.novels where id = novel_id_to_delete;
+      else
+        -- Otherwise, raise an exception
+        raise exception 'Permission denied: You must be an admin to delete novels.';
+      end if;
+    end;
+    $$;
+
+    -- After creating the function, grant permission for authenticated users to call it.
+    -- The security check inside the function ensures only admins can successfully execute it.
+    grant execute on function public.admin_delete_novel(uuid) to authenticated;
+  */
   async adminDeleteNovel(novelId: string): Promise<{ success: boolean }> {
       if (!supabase) return { success: false };
       const { error } = await supabase.rpc('admin_delete_novel', { novel_id_to_delete: novelId });
       if (error) {
           console.error('Error deleting novel via admin RPC:', error);
+      }
+      return { success: !error };
+  },
+  
+  /* 
+    --- ADMIN-ONLY FUNCTION ---
+    NOTE: For this to work, you must create a corresponding RPC function in your Supabase project.
+    Go to the Supabase SQL Editor and run the following script:
+
+    create or replace function admin_delete_user(user_id_to_delete uuid)
+    returns void
+    language plpgsql
+    security definer
+    set search_path = public
+    as $$
+    declare
+      caller_role text;
+    begin
+      -- Check if the user calling this function is an ADMIN
+      select role into caller_role from public.profiles where id = auth.uid();
+
+      if caller_role = 'ADMIN' then
+        -- If they are an admin, proceed with deleting the target user from the auth schema
+        delete from auth.users where id = user_id_to_delete;
+      else
+        -- Otherwise, raise an exception
+        raise exception 'Permission denied: You must be an admin to delete users.';
+      end if;
+    end;
+    $$;
+
+    -- After creating the function, grant permission for authenticated users to call it.
+    -- The security check inside the function ensures only admins can successfully execute it.
+    grant execute on function public.admin_delete_user(uuid) to authenticated;
+  */
+  async adminDeleteUser(userId: string): Promise<{ success: boolean }> {
+      if (!supabase) return { success: false };
+      const { error } = await supabase.rpc('admin_delete_user', { user_id_to_delete: userId });
+      if (error) {
+          console.error('Error deleting user via admin RPC:', error);
       }
       return { success: !error };
   },

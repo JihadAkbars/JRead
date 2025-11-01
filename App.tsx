@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -888,8 +886,24 @@ const ReaderPage = () => {
             viewTimerRef.current = window.setTimeout(() => {
                 ApiService.incrementChapterView(chapter.id);
                 sessionStorage.setItem(`viewed_chapter_${chapter.id}`, 'true');
-                // Optimistically update chapter state to reflect the new view count.
-                setChapter(prev => prev ? { ...prev, views: (prev.views || 0) + 1 } : null);
+                
+                // FIX: The original code only updated `chapter` state, creating an inconsistency
+                // with the main `novel` state object. This new code updates both.
+                
+                const newViews = (chapter.views || 0) + 1;
+
+                // 1. Optimistically update the current chapter's state
+                setChapter(prev => prev ? { ...prev, views: newViews } : null);
+
+                // 2. Also update the corresponding chapter within the main novel state object
+                //    to ensure consistency across the component.
+                setNovel(prevNovel => {
+                    if (!prevNovel) return null;
+                    const updatedChapters = prevNovel.chapters.map(c => 
+                        c.id === chapter.id ? { ...c, views: newViews } : c
+                    );
+                    return { ...prevNovel, chapters: updatedChapters };
+                });
             }, 60000); // 1 minute
         }
 

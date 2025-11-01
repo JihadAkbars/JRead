@@ -331,6 +331,7 @@ const Header = () => {
   };
   
   const isAuthor = user?.role === UserRole.AUTHOR || user?.role === UserRole.ADMIN || user?.role === UserRole.OWNER;
+  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.OWNER;
 
   return (
     <header className="bg-light-surface dark:bg-dark-surface shadow-md sticky top-0 z-40">
@@ -380,6 +381,15 @@ const Header = () => {
                             className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                         >
                             My Works
+                        </Link>
+                    )}
+                    {isAdmin && (
+                        <Link 
+                            to="/admin-panel" 
+                            onClick={() => setIsProfileDropdownOpen(false)}
+                            className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        >
+                            Admin Panel
                         </Link>
                     )}
                     <button 
@@ -1607,6 +1617,110 @@ const EditChapterPage = () => {
     );
 };
 
+const AdminPanelPage = () => {
+    const { user: currentUser } = useAuth();
+    const navigate = useNavigate();
+    const [users, setUsers] = useState<User[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.OWNER)) {
+            navigate('/');
+            return;
+        }
+
+        const fetchUsers = async () => {
+            setIsLoading(true);
+            try {
+                const allUsers = await ApiService.getUsers();
+                setUsers(allUsers);
+            } catch (err) {
+                setError('Failed to fetch users.');
+                console.error(err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchUsers();
+    }, [currentUser, navigate]);
+    
+    const handleRoleChange = async (targetUserId: string, newRole: UserRole) => {
+        const originalUsers = [...users];
+        
+        // Optimistic UI update
+        setUsers(users.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
+        
+        const updatedUser = await ApiService.updateUser(targetUserId, { role: newRole });
+        if (!updatedUser) {
+            alert('Failed to update user role.');
+            setUsers(originalUsers); // Revert on failure
+        }
+    };
+    
+    const canChangeRole = (targetUser: User): boolean => {
+        if (!currentUser) return false;
+        if (currentUser.id === targetUser.id) return false; // Cannot change own role
+
+        if (currentUser.role === UserRole.OWNER) {
+            return true; // Owner can change anyone except themselves
+        }
+
+        if (currentUser.role === UserRole.ADMIN) {
+            // Admin cannot change Owner or other Admins
+            if (targetUser.role === UserRole.OWNER || targetUser.role === UserRole.ADMIN) {
+                return false;
+            }
+            return true;
+        }
+        
+        return false;
+    };
+
+    if (isLoading) return <div className="text-center py-10">Loading users...</div>;
+
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <h1 className="text-3xl font-bold mb-6">Admin Panel - User Management</h1>
+            {error && <p className="text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md mb-4">{error}</p>}
+            <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead className="bg-gray-100 dark:bg-gray-800">
+                        <tr>
+                            <th className="p-4 font-semibold">Username</th>
+                            <th className="p-4 font-semibold">Email</th>
+                            <th className="p-4 font-semibold">Role</th>
+                            <th className="p-4 font-semibold">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {users.map(user => (
+                            <tr key={user.id} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+                                <td className="p-4">{user.username}</td>
+                                <td className="p-4">{user.email}</td>
+                                <td className="p-4 capitalize">{user.role.toLowerCase()}</td>
+                                <td className="p-4">
+                                    <Select 
+                                        value={user.role}
+                                        onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
+                                        disabled={!canChangeRole(user)}
+                                        className="w-40"
+                                    >
+                                        {Object.values(UserRole).map(role => (
+                                            <option key={role} value={role}>{role}</option>
+                                        ))}
+                                    </Select>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
 
 const AppRouter = () => {
   return (
@@ -1626,6 +1740,9 @@ const AppRouter = () => {
       <Route path="/manage-chapters/:novelId" element={<ManageChaptersPage />} />
       <Route path="/edit-chapter/:novelId" element={<EditChapterPage />} />
       <Route path="/edit-chapter/:novelId/:chapterId" element={<EditChapterPage />} />
+      
+      {/* Admin Route */}
+      <Route path="/admin-panel" element={<AdminPanelPage />} />
     </Routes>
   );
 };

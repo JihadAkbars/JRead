@@ -146,10 +146,6 @@ const NovelCard: React.FC<{ novel: Novel }> = ({ novel }) => {
             <HeartIcon className="w-4 h-4 mr-1 text-red-500" />
             <span>{novel.likes || 0}</span>
           </div>
-           <div className="flex items-center" title="Views">
-            <EyeIcon className="w-4 h-4 mr-1 text-gray-400" />
-            <span>{novel.views || 0}</span>
-          </div>
         </div>
       </div>
     </Link>
@@ -455,7 +451,7 @@ const HomePage = () => {
   const { novels, loading } = useNovels();
   const [displayNovels, setDisplayNovels] = useState<Novel[]>([]);
   const [activeGenre, setActiveGenre] = useState('All');
-  const [sortBy, setSortBy] = useState<'createdAt' | 'rating' | 'views'>('createdAt');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'rating'>('createdAt');
   
   useEffect(() => {
     let processedNovels = [...novels];
@@ -466,7 +462,6 @@ const HomePage = () => {
 
     processedNovels.sort((a, b) => {
         switch (sortBy) {
-            case 'views': return (b.views || 0) - (a.views || 0);
             case 'rating': return b.rating - a.rating;
             case 'createdAt':
             default: return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -479,7 +474,6 @@ const HomePage = () => {
   const sortOptions: Record<typeof sortBy, string> = {
     createdAt: 'Latest Releases',
     rating: 'Top Rated',
-    views: 'Most Popular',
   };
 
   return (
@@ -497,7 +491,6 @@ const HomePage = () => {
                   >
                       <option value="createdAt">Latest</option>
                       <option value="rating">Rating</option>
-                      <option value="views">Popularity</option>
                   </select>
               </div>
           </div>
@@ -678,10 +671,6 @@ const NovelDetailPage = () => {
                     
                     <div className="flex items-center gap-6 my-4 text-gray-600 dark:text-gray-400 border-y py-3 border-gray-200 dark:border-gray-700">
                          <div className="text-center">
-                            <p className="text-2xl font-bold text-light-text dark:text-dark-text">{novel.views?.toLocaleString() || 0}</p>
-                            <p className="text-sm">Views</p>
-                        </div>
-                         <div className="text-center">
                             <p className="text-2xl font-bold text-light-text dark:text-dark-text">{novel.likes?.toLocaleString() || 0}</p>
                             <p className="text-sm">Likes</p>
                         </div>
@@ -766,7 +755,6 @@ const ReaderPage = () => {
     const [isChapterMenuOpen, setIsChapterMenuOpen] = useState(false);
     const chapterMenuRef = useRef<HTMLDivElement>(null);
     const saveTimeoutRef = useRef<number | null>(null);
-    const viewedChaptersRef = useRef(new Set());
 
     useEffect(() => {
         if (novelId && chapterId) {
@@ -802,30 +790,6 @@ const ReaderPage = () => {
             }, 100);
         }
     }, [location.state]);
-
-    useEffect(() => {
-        // This effect is specifically for view counting. Its dependencies are minimized
-        // to stable IDs to prevent the timer from being reset by unrelated re-renders.
-        const currentChapterId = chapter?.id;
-        const currentNovelId = novel?.id;
-        const currentAuthorId = novel?.authorId;
-        const currentUserId = user?.id;
-
-        if (currentUserId && currentNovelId && currentChapterId && currentUserId !== currentAuthorId) {
-            if (!viewedChaptersRef.current.has(currentChapterId)) {
-                const timer = setTimeout(() => {
-                    ApiService.incrementViews(currentNovelId, currentChapterId);
-                    viewedChaptersRef.current.add(currentChapterId);
-                }, 30000); // 30 seconds
-
-                // Cleanup function to clear the timer if the component unmounts or dependencies change.
-                return () => {
-                    clearTimeout(timer);
-                };
-            }
-        }
-    }, [chapter?.id, novel?.id, user?.id]); // Using stable IDs as dependencies
-
 
     useEffect(() => {
         const handleScroll = () => {
@@ -2102,7 +2066,7 @@ const AuthorDashboardPage = () => {
                                     <div className="flex-grow min-w-0">
                                             <p className="font-semibold text-lg truncate">{novel.title}</p>
                                             <p className={`text-sm font-medium ${novel.status === NovelStatus.PUBLISHED ? 'text-green-500' : 'text-yellow-500'}`}>{novel.status}</p>
-                                            <p className="text-xs text-gray-500">{novel.views || 0} views &middot; {novel.likes} likes</p>
+                                            <p className="text-xs text-gray-500">{novel.likes} likes</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-4">

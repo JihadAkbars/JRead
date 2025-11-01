@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -89,6 +88,7 @@ const Button = ({ children, className = '', variant = 'primary', type = 'button'
 };
 
 const Input = (props: ComponentPropsWithoutRef<'input'>) => <input {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
+const TextArea = (props: ComponentPropsWithoutRef<'textarea'>) => <textarea {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
 
 const Modal = ({ isOpen, onClose, children }: { isOpen: boolean, onClose: () => void, children?: ReactNode }) => {
   if (!isOpen) return null;
@@ -349,6 +349,22 @@ const Header = () => {
     </header>
   );
 };
+
+// --- FOOTER COMPONENT --- //
+const Footer = () => {
+  return (
+    <footer className="bg-light-surface dark:bg-dark-surface mt-auto py-6">
+      <div className="container mx-auto px-4 text-center text-gray-500 dark:text-gray-400">
+        <div className="flex justify-center items-center gap-4 mb-2">
+          <Link to="/contact" className="hover:text-primary">Contact</Link>
+          <Link to="/changelog" className="hover:text-primary">Changelog</Link>
+        </div>
+        <p>&copy; {new Date().getFullYear()} J Read. All rights reserved.</p>
+      </div>
+    </footer>
+  );
+};
+
 
 // --- PAGES --- //
 const HomePage = () => {
@@ -793,6 +809,127 @@ const ProfilePage = () => {
     );
 };
 
+const ContactPage = () => {
+    const { user } = useAuth();
+    const [email, setEmail] = useState(user?.email || '');
+    const [subject, setSubject] = useState('');
+    const [message, setMessage] = useState('');
+    const [isSubmitted, setIsSubmitted] = useState(false);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        // In a real app, you would send this data to a server or a service like Formspree.
+        // For now, we'll just simulate a successful submission.
+        console.log({ email, subject, message });
+        setIsSubmitted(true);
+    };
+
+    if (isSubmitted) {
+        return (
+            <div className="container mx-auto px-4 py-12 text-center">
+                <div className="bg-light-surface dark:bg-dark-surface max-w-lg mx-auto p-8 rounded-lg shadow-md">
+                    <h1 className="text-3xl font-bold text-secondary mb-4">Thank You!</h1>
+                    <p>Your message has been received. We appreciate your feedback and will get back to you if necessary.</p>
+                    <Link to="/">
+                        <Button className="mt-6">Back to Home</Button>
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+    
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <div className="max-w-2xl mx-auto bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-md">
+                <h1 className="text-3xl font-bold mb-2 text-center">Contact Us</h1>
+                <p className="text-center text-gray-600 dark:text-gray-400 mb-6">Have a question, feedback, or a bug to report? Let us know!</p>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div>
+                        <label htmlFor="email" className="block text-sm font-medium mb-1">Your Email</label>
+                        <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                    </div>
+                    <div>
+                        <label htmlFor="subject" className="block text-sm font-medium mb-1">Subject</label>
+                        <Input id="subject" type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g., Feedback on the new reader" required />
+                    </div>
+                    <div>
+                        <label htmlFor="message" className="block text-sm font-medium mb-1">Message</label>
+                        <TextArea id="message" rows={6} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Tell us what's on your mind..." required />
+                    </div>
+                    <div>
+                        <Button type="submit" className="w-full">Submit Feedback</Button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+const changelogData = [
+    {
+        version: '1.0.0',
+        date: 'July 28, 2024',
+        changes: [
+            { type: 'NEW', text: 'Initial launch of J Read! Welcome to the platform.' },
+            { type: 'NEW', text: 'User accounts: Readers and Authors can sign up and log in.' },
+            { type: 'NEW', text: 'Browse novels by genre and sort by latest or top-rated.' },
+            { type: 'NEW', 'text': 'Interactive novel reader with adjustable font size and dark/light modes.' },
+            { type: 'NEW', 'text': 'Novel detail pages with synopsis, chapters, and author information.' },
+            { type: 'NEW', 'text': 'Users can like, rate, and bookmark novels.' },
+            { type: 'NEW', 'text': 'Author profile pages to showcase their works.' },
+        ],
+    },
+    {
+        version: '1.1.0',
+        date: 'July 29, 2024',
+        changes: [
+            { type: 'NEW', text: 'Added a Contact page for user feedback.' },
+            { type: 'NEW', text: 'Added this Changelog page to keep you updated!' },
+            { type: 'IMPROVED', text: 'Optimized novel loading performance on the homepage.' },
+            { type: 'FIXED', text: 'Resolved a bug where the profile dropdown would sometimes not close correctly.' },
+        ]
+    }
+];
+
+const ChangelogTag = ({ type }: { type: string }) => {
+    const styles: Record<string, string> = {
+        NEW: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+        IMPROVED: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+        FIXED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+    };
+    return <span className={`inline-block mr-2 px-2.5 py-0.5 rounded-full text-xs font-semibold ${styles[type] || 'bg-gray-200 text-gray-800'}`}>{type}</span>;
+};
+
+
+const ChangelogPage = () => {
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <div className="max-w-3xl mx-auto">
+                <h1 className="text-4xl font-bold text-center mb-2">Changelog</h1>
+                <p className="text-center text-gray-600 dark:text-gray-400 mb-10">See what's new and improved on J Read.</p>
+                
+                {changelogData.map(entry => (
+                    <div key={entry.version} className="mb-12">
+                        <div className="flex items-baseline gap-4 mb-4">
+                            <h2 className="text-2xl font-bold">Version {entry.version}</h2>
+                            <p className="text-gray-500 dark:text-gray-400">{entry.date}</p>
+                        </div>
+                        <ul className="space-y-3 list-inside bg-light-surface dark:bg-dark-surface p-6 rounded-lg shadow-md">
+                            {entry.changes.map((change, index) => (
+                                <li key={index} className="flex items-start">
+                                    <ChangelogTag type={change.type} />
+                                    <span>{change.text}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+
 const AppRouter = () => {
   return (
     <Routes>
@@ -800,6 +937,8 @@ const AppRouter = () => {
       <Route path="/novel/:id" element={<NovelDetailPage />} />
       <Route path="/read/:novelId/:chapterId" element={<ReaderPage />} />
       <Route path="/user/:userId" element={<ProfilePage />} />
+      <Route path="/contact" element={<ContactPage />} />
+      <Route path="/changelog" element={<ChangelogPage />} />
     </Routes>
   );
 };
@@ -913,6 +1052,7 @@ const App = () => {
             <main className="flex-grow">
               <AppRouter />
             </main>
+            <Footer />
           </div>
           <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
         </HashRouter>

@@ -1158,13 +1158,17 @@ const AdminDashboard = () => {
             if (success) {
                 setUsers(prev => prev.filter(u => u.id !== userId));
                 alert(`Successfully deleted user "${username}".`);
-            } else {
-                // More robust check for missing function
-                if (error && (error.code === '42883' || error.message?.includes('does not exist'))) {
+            } else if (error) {
+                const lowerCaseMessage = error.message?.toLowerCase() || '';
+                if (error.code === '42883' || lowerCaseMessage.includes('does not exist')) {
                     setError("Action failed: The database function 'admin_delete_user' is missing. Please follow the \"Backend Function Setup\" guide at the top of this page.");
+                } else if (lowerCaseMessage.includes('permission denied')) {
+                     setError(`Failed to delete user: Permission denied. The backend function reported that you do not have admin rights.`);
                 } else {
                     setError(`Failed to delete user "${username}". Check the console for details.`);
                 }
+            } else {
+                 setError(`An unknown error occurred while deleting user "${username}".`);
             }
         }
     };
@@ -1176,13 +1180,17 @@ const AdminDashboard = () => {
             if (success) {
                 setNovels(prev => prev.filter(n => n.id !== novelId));
                 alert(`Successfully deleted novel "${title}".`);
-            } else {
-                 // More robust check for missing function
-                 if (error && (error.code === '42883' || error.message?.includes('does not exist'))) {
+            } else if (error) {
+                 const lowerCaseMessage = error.message?.toLowerCase() || '';
+                if (error.code === '42883' || lowerCaseMessage.includes('does not exist')) {
                     setError("Action failed: The database function 'admin_delete_novel' is missing. Please follow the \"Backend Function Setup\" guide at the top of this page.");
+                } else if (lowerCaseMessage.includes('permission denied')) {
+                     setError(`Failed to delete novel: Permission denied. The backend function reported that you do not have admin rights.`);
                 } else {
                     setError(`Failed to delete novel "${title}". Check the console for more details.`);
                 }
+            } else {
+                setError(`An unknown error occurred while deleting novel "${title}".`);
             }
         }
     };

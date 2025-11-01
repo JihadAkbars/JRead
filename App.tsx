@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
-import { User, UserRole, Novel, Chapter, Comment } from './types';
+import { User, UserRole, Novel, Chapter, Comment, ChangelogEntry, ChangelogChange, ChangelogChangeType } from './types';
 import { ApiService } from './data';
 import { GENRES } from './constants';
 import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon } from './components/Icons';
@@ -89,12 +89,21 @@ const Button = ({ children, className = '', variant = 'primary', type = 'button'
 
 const Input = (props: ComponentPropsWithoutRef<'input'>) => <input {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
 const TextArea = (props: ComponentPropsWithoutRef<'textarea'>) => <textarea {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
+const Select = (props: ComponentPropsWithoutRef<'select'>) => <select {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
 
-const Modal = ({ isOpen, onClose, children }: { isOpen: boolean, onClose: () => void, children?: ReactNode }) => {
+
+const Modal = ({ isOpen, onClose, children, size = 'md' }: { isOpen: boolean, onClose: () => void, children?: ReactNode, size?: 'md' | 'lg' | 'xl' }) => {
   if (!isOpen) return null;
+
+  const sizeClasses = {
+      md: 'max-w-md',
+      lg: 'max-w-lg',
+      xl: 'max-w-xl',
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-xl p-6 w-full max-w-md relative" onClick={e => e.stopPropagation()}>
+      <div className={`bg-light-surface dark:bg-dark-surface rounded-lg shadow-xl p-6 w-full relative ${sizeClasses[size]}`} onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-2 right-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">
           <XIcon className="w-6 h-6" />
         </button>
@@ -815,13 +824,43 @@ const ContactPage = () => {
     const [subject, setSubject] = useState('');
     const [message, setMessage] = useState('');
     const [isSubmitted, setIsSubmitted] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState('');
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // In a real app, you would send this data to a server or a service like Formspree.
-        // For now, we'll just simulate a successful submission.
-        console.log({ email, subject, message });
-        setIsSubmitted(true);
+        setIsSubmitting(true);
+        setError('');
+
+        const formData = new FormData();
+        formData.append('email', email);
+        formData.append('subject', subject);
+        formData.append('message', message);
+        
+        try {
+            const response = await fetch("https://formspree.io/f/mwpwwrgn", {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                setIsSubmitted(true);
+            } else {
+                const data = await response.json();
+                if (data.errors) {
+                    setError(data.errors.map((err: any) => err.message).join(', '));
+                } else {
+                    setError('An unknown error occurred. Please try again.');
+                }
+            }
+        } catch (err) {
+            setError('Failed to send message. Please check your connection and try again.');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     if (isSubmitted) {
@@ -843,21 +882,24 @@ const ContactPage = () => {
             <div className="max-w-2xl mx-auto bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-md">
                 <h1 className="text-3xl font-bold mb-2 text-center">Contact Us</h1>
                 <p className="text-center text-gray-600 dark:text-gray-400 mb-6">Have a question, feedback, or a bug to report? Let us know!</p>
+                 {error && <p className="text-red-500 text-center mb-4 bg-red-100 dark:bg-red-900/50 p-3 rounded-md">{error}</p>}
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
                         <label htmlFor="email" className="block text-sm font-medium mb-1">Your Email</label>
-                        <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                        <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isSubmitting} />
                     </div>
                     <div>
                         <label htmlFor="subject" className="block text-sm font-medium mb-1">Subject</label>
-                        <Input id="subject" type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g., Feedback on the new reader" required />
+                        <Input id="subject" type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g., Feedback on the new reader" required disabled={isSubmitting} />
                     </div>
                     <div>
                         <label htmlFor="message" className="block text-sm font-medium mb-1">Message</label>
-                        <TextArea id="message" rows={6} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Tell us what's on your mind..." required />
+                        <TextArea id="message" rows={6} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Tell us what's on your mind..." required disabled={isSubmitting} />
                     </div>
                     <div>
-                        <Button type="submit" className="w-full">Submit Feedback</Button>
+                        <Button type="submit" className="w-full" disabled={isSubmitting}>
+                            {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
+                        </Button>
                     </div>
                 </form>
             </div>
@@ -865,31 +907,98 @@ const ContactPage = () => {
     );
 };
 
-const changelogData = [
-    {
-        version: '1.0.0',
-        date: 'July 28, 2024',
-        changes: [
-            { type: 'NEW', text: 'Initial launch of J Read! Welcome to the platform.' },
-            { type: 'NEW', text: 'User accounts: Readers and Authors can sign up and log in.' },
-            { type: 'NEW', text: 'Browse novels by genre and sort by latest or top-rated.' },
-            { type: 'NEW', 'text': 'Interactive novel reader with adjustable font size and dark/light modes.' },
-            { type: 'NEW', 'text': 'Novel detail pages with synopsis, chapters, and author information.' },
-            { type: 'NEW', 'text': 'Users can like, rate, and bookmark novels.' },
-            { type: 'NEW', 'text': 'Author profile pages to showcase their works.' },
-        ],
-    },
-    {
-        version: '1.1.0',
-        date: 'July 29, 2024',
-        changes: [
-            { type: 'NEW', text: 'Added a Contact page for user feedback.' },
-            { type: 'NEW', text: 'Added this Changelog page to keep you updated!' },
-            { type: 'IMPROVED', text: 'Optimized novel loading performance on the homepage.' },
-            { type: 'FIXED', text: 'Resolved a bug where the profile dropdown would sometimes not close correctly.' },
-        ]
-    }
-];
+const ChangelogFormModal = ({ isOpen, onClose, onSubmit, initialData }: {
+    isOpen: boolean,
+    onClose: () => void,
+    onSubmit: (data: Omit<ChangelogEntry, 'id' | 'created_at'>) => void,
+    initialData?: ChangelogEntry | null
+}) => {
+    const [version, setVersion] = useState('');
+    const [date, setDate] = useState('');
+    const [changes, setChanges] = useState<ChangelogChange[]>([{ type: 'NEW', text: '' }]);
+
+    useEffect(() => {
+        if (isOpen) {
+            if (initialData) {
+                setVersion(initialData.version);
+                // Ensure date is valid before formatting
+                const initialDate = new Date(initialData.date);
+                setDate(isNaN(initialDate.getTime()) ? '' : initialDate.toISOString().split('T')[0]);
+                setChanges(initialData.changes.length > 0 ? initialData.changes : [{ type: 'NEW', text: '' }]);
+            } else {
+                setVersion('');
+                setDate(new Date().toISOString().split('T')[0]);
+                setChanges([{ type: 'NEW', text: '' }]);
+            }
+        }
+    }, [initialData, isOpen]);
+
+    const handleChangesChange = (index: number, field: 'type' | 'text', value: string) => {
+        const newChanges = [...changes];
+        newChanges[index] = { ...newChanges[index], [field]: value };
+        setChanges(newChanges);
+    };
+
+    const addChange = () => {
+        setChanges([...changes, { type: 'NEW', text: '' }]);
+    };
+
+    const removeChange = (index: number) => {
+        setChanges(changes.filter((_, i) => i !== index));
+    };
+    
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const validChanges = changes.filter(c => c.text.trim() !== '');
+        if (version && date && validChanges.length > 0) {
+            onSubmit({ version, date, changes: validChanges });
+        } else {
+            alert("Please fill in version, date, and at least one change description.");
+        }
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} size="xl">
+            <h2 className="text-2xl font-bold mb-6">{initialData ? 'Edit Entry' : 'Add New Entry'}</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="version" className="block text-sm font-medium mb-1">Version</label>
+                        <Input id="version" type="text" placeholder="e.g., 1.2.0" value={version} onChange={e => setVersion(e.target.value)} required />
+                    </div>
+                    <div>
+                        <label htmlFor="date" className="block text-sm font-medium mb-1">Date</label>
+                        <Input id="date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+                    </div>
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold mb-2">Changes</h3>
+                    <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                        {changes.map((change, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                                <Select value={change.type} onChange={e => handleChangesChange(index, 'type', e.target.value)} className="w-32">
+                                    <option value="NEW">NEW</option>
+                                    <option value="IMPROVED">IMPROVED</option>
+                                    <option value="FIXED">FIXED</option>
+                                </Select>
+                                <Input type="text" placeholder="Change description..." value={change.text} onChange={e => handleChangesChange(index, 'text', e.target.value)} className="flex-grow" />
+                                <Button type="button" variant="danger" onClick={() => removeChange(index)} className="!p-2">
+                                    <XIcon className="w-5 h-5"/>
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                    <Button type="button" variant="secondary" onClick={addChange} className="mt-3 text-sm">Add Change</Button>
+                </div>
+                <div className="flex justify-end gap-2 pt-4">
+                    <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+                    <Button type="submit">{initialData ? 'Save Changes' : 'Create Entry'}</Button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
 
 const ChangelogTag = ({ type }: { type: string }) => {
     const styles: Record<string, string> = {
@@ -902,29 +1011,104 @@ const ChangelogTag = ({ type }: { type: string }) => {
 
 
 const ChangelogPage = () => {
+    const { user } = useAuth();
+    const isAdmin = user?.role === UserRole.ADMIN;
+    const [changelogs, setChangelogs] = useState<ChangelogEntry[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingEntry, setEditingEntry] = useState<ChangelogEntry | null>(null);
+
+    const fetchChangelogs = async () => {
+        setIsLoading(true);
+        try {
+            const data = await ApiService.getChangelogs();
+            setChangelogs(data);
+        } catch (error) {
+            console.error("Failed to fetch changelogs:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchChangelogs();
+    }, []);
+    
+    const handleFormSubmit = async (data: Omit<ChangelogEntry, 'id' | 'created_at'>) => {
+        if (editingEntry) { // Editing existing entry
+            const updatedEntry = await ApiService.updateChangelog(editingEntry.id, data);
+            if (updatedEntry) {
+                setChangelogs(changelogs.map(c => c.id === updatedEntry.id ? updatedEntry : c));
+            }
+        } else { // Creating new entry
+            const newEntry = await ApiService.addChangelog(data);
+            if (newEntry) {
+                setChangelogs([newEntry, ...changelogs]);
+            }
+        }
+        setIsModalOpen(false);
+        setEditingEntry(null);
+    };
+
+    const openAddModal = () => {
+        setEditingEntry(null);
+        setIsModalOpen(true);
+    };
+    
+    const openEditModal = (entry: ChangelogEntry) => {
+        setEditingEntry(entry);
+        setIsModalOpen(true);
+    };
+    
+    const handleDelete = async (id: string) => {
+        if (window.confirm('Are you sure you want to delete this changelog entry?')) {
+            const { success } = await ApiService.deleteChangelog(id);
+            if (success) {
+                setChangelogs(changelogs.filter(c => c.id !== id));
+            }
+        }
+    };
+
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="max-w-3xl mx-auto">
                 <h1 className="text-4xl font-bold text-center mb-2">Changelog</h1>
                 <p className="text-center text-gray-600 dark:text-gray-400 mb-10">See what's new and improved on J Read.</p>
-                
-                {changelogData.map(entry => (
-                    <div key={entry.version} className="mb-12">
-                        <div className="flex items-baseline gap-4 mb-4">
-                            <h2 className="text-2xl font-bold">Version {entry.version}</h2>
-                            <p className="text-gray-500 dark:text-gray-400">{entry.date}</p>
-                        </div>
-                        <ul className="space-y-3 list-inside bg-light-surface dark:bg-dark-surface p-6 rounded-lg shadow-md">
-                            {entry.changes.map((change, index) => (
-                                <li key={index} className="flex items-start">
-                                    <ChangelogTag type={change.type} />
-                                    <span>{change.text}</span>
-                                </li>
-                            ))}
-                        </ul>
+
+                {isAdmin && (
+                    <div className="text-center mb-8">
+                        <Button onClick={openAddModal}>Add New Entry</Button>
                     </div>
-                ))}
+                )}
+                
+                {isLoading ? ( <p className="text-center">Loading changelog...</p> ) : (
+                    changelogs.map(entry => (
+                        <div key={entry.id} className="mb-12">
+                            <div className="flex items-baseline justify-between gap-4 mb-4">
+                                <div className="flex items-baseline gap-4">
+                                    <h2 className="text-2xl font-bold">Version {entry.version}</h2>
+                                    <p className="text-gray-500 dark:text-gray-400">{new Date(entry.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</p>
+                                </div>
+                                {isAdmin && (
+                                    <div className="flex gap-2">
+                                        <Button onClick={() => openEditModal(entry)} variant="ghost" className="text-sm !py-1 !px-2">Edit</Button>
+                                        <Button onClick={() => handleDelete(entry.id)} variant="danger" className="text-sm !py-1 !px-2">Delete</Button>
+                                    </div>
+                                )}
+                            </div>
+                            <ul className="space-y-3 list-inside bg-light-surface dark:bg-dark-surface p-6 rounded-lg shadow-md">
+                                {entry.changes.map((change, index) => (
+                                    <li key={index} className="flex items-start">
+                                        <ChangelogTag type={change.type} />
+                                        <span>{change.text}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ))
+                )}
             </div>
+            {isAdmin && <ChangelogFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleFormSubmit} initialData={editingEntry} />}
         </div>
     );
 }

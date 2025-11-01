@@ -325,8 +325,13 @@ export const ApiService = {
         return null;
     }
     
-    // Supabase returns related table as an object if it's a to-one relationship
-    const chapter = data.chapters as { chapter_number: number };
+    // Supabase can return a related table as an object or an array.
+    // This handles both cases to prevent runtime errors.
+    const chapter = Array.isArray(data.chapters) ? data.chapters[0] : data.chapters;
+
+    if (!chapter) {
+        return null;
+    }
 
     return {
         chapterId: data.chapter_id,

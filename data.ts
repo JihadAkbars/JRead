@@ -47,13 +47,15 @@ export const ApiService = {
   },
 
   async updateUser(id: string, updatedData: Partial<User>): Promise<User | null> {
-    const { username, profilePicture, penName, bio, role } = updatedData;
+    const { username, profilePicture, penName, bio, role, bookmarksArePublic, activityIsPublic } = updatedData;
     const { data, error } = await supabase.from('profiles').update({ 
         username,
         profile_picture: profilePicture,
         pen_name: penName,
         bio,
         role,
+        bookmarks_are_public: bookmarksArePublic,
+        activity_is_public: activityIsPublic
     }).eq('id', id).select().single();
     if (error) throw error;
     return toCamelCase(data) as User;
@@ -87,6 +89,12 @@ export const ApiService = {
         novel.chapters.sort((a, b) => a.chapterNumber - b.chapterNumber);
     }
     return novel;
+  },
+  
+  async getNovelById(novelId: string): Promise<Novel | null> {
+     const { data, error } = await supabase.from('novels').select('*').eq('id', novelId).single();
+     if (error) return null;
+     return toCamelCase(data) as Novel;
   },
 
   async getNovelsByAuthor(authorId: string): Promise<Novel[]> {
@@ -183,6 +191,37 @@ export const ApiService = {
     // This is a placeholder as comments table is not in the schema yet.
     return Promise.resolve([]);
   },
+  
+  // --- BOOKMARK METHODS --- //
+  async isNovelBookmarked(userId: string, novelId: string): Promise<boolean> {
+      const { data, error } = await supabase.from('bookmarks').select('id').eq('user_id', userId).eq('novel_id', novelId).single();
+      return !!data && !error;
+  },
+
+  async addBookmark(userId: string, novelId: string): Promise<{ success: boolean }> {
+      const { error } = await supabase.from('bookmarks').insert({ user_id: userId, novel_id: novelId });
+      return { success: !error };
+  },
+
+  async removeBookmark(userId: string, novelId: string): Promise<{ success: boolean }> {
+      const { error } = await supabase.from('bookmarks').delete().eq('user_id', userId).eq('novel_id', novelId);
+      return { success: !error };
+  },
+  
+  async getBookmarkedNovels(userId: string): Promise<Novel[]> {
+      const { data, error } = await supabase.from('bookmarks').select('novels(*)').eq('user_id', userId).order('created_at', { ascending: false });
+      if (error) {
+          console.error('Error fetching bookmarked novels:', error);
+          return [];
+      }
+      return toCamelCase(data.map((item: any) => item.novels).filter(Boolean)) as Novel[];
+  },
+
+  // --- ACTIVITY METHODS --- //
+  async setLastViewedNovel(userId: string, novelId: string): Promise<void> {
+    await supabase.from('profiles').update({ last_viewed_novel_id: novelId }).eq('id', userId);
+  },
+
 
   // --- UPLOAD METHOD EXPORT --- //
   uploadProfilePicture: (file: File) => uploadFile('profile_pictures', file),

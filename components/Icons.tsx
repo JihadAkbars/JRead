@@ -2,7 +2,6 @@ import React from 'react';
 
 interface IconProps {
   className?: string;
-  // FIX: Add optional 'filled' property to IconProps for StarIcon.
   filled?: boolean;
 }
 

@@ -768,7 +768,7 @@ const ProfilePage = () => {
                 const user = await ApiService.getUser(userId);
                 setProfileUser(user);
                 
-                if (user && (user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN)) {
+                if (user && (user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN || user.role === UserRole.OWNER)) {
                     const novels = await ApiService.getNovelsByAuthor(user.id);
                     // In a real app with proper status fields, you would filter for 'PUBLISHED' status here
                     setUserNovels(novels); 
@@ -786,7 +786,7 @@ const ProfilePage = () => {
     if (isLoading) return <div className="text-center py-10">Loading profile...</div>;
     if (!profileUser) return <div className="text-center py-10">User not found.</div>;
     
-    const isAuthor = profileUser.role === UserRole.AUTHOR || profileUser.role === UserRole.ADMIN;
+    const isAuthor = profileUser.role === UserRole.AUTHOR || profileUser.role === UserRole.ADMIN || profileUser.role === UserRole.OWNER;
 
     return (
         <div className="container mx-auto p-4 md:p-8">
@@ -1012,7 +1012,7 @@ const ChangelogTag = ({ type }: { type: string }) => {
 
 const ChangelogPage = () => {
     const { user } = useAuth();
-    const isAdmin = user?.role === UserRole.ADMIN;
+    const hasAdminPrivileges = user?.role === UserRole.ADMIN || user?.role === UserRole.OWNER;
     const [changelogs, setChangelogs] = useState<ChangelogEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1075,7 +1075,7 @@ const ChangelogPage = () => {
                 <h1 className="text-4xl font-bold text-center mb-2">Changelog</h1>
                 <p className="text-center text-gray-600 dark:text-gray-400 mb-10">See what's new and improved on J Read.</p>
 
-                {isAdmin && (
+                {hasAdminPrivileges && (
                     <div className="text-center mb-8">
                         <Button onClick={openAddModal}>Add New Entry</Button>
                     </div>
@@ -1089,7 +1089,7 @@ const ChangelogPage = () => {
                                     <h2 className="text-2xl font-bold">Version {entry.version}</h2>
                                     <p className="text-gray-500 dark:text-gray-400">{new Date(entry.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</p>
                                 </div>
-                                {isAdmin && (
+                                {hasAdminPrivileges && (
                                     <div className="flex gap-2">
                                         <Button onClick={() => openEditModal(entry)} variant="ghost" className="text-sm !py-1 !px-2">Edit</Button>
                                         <Button onClick={() => handleDelete(entry.id)} variant="danger" className="text-sm !py-1 !px-2">Delete</Button>
@@ -1108,7 +1108,7 @@ const ChangelogPage = () => {
                     ))
                 )}
             </div>
-            {isAdmin && <ChangelogFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleFormSubmit} initialData={editingEntry} />}
+            {hasAdminPrivileges && <ChangelogFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleFormSubmit} initialData={editingEntry} />}
         </div>
     );
 }
@@ -1244,5 +1244,4 @@ const App = () => {
     </AuthContext.Provider>
   );
 };
-
 export default App;

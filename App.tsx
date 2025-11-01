@@ -43,7 +43,8 @@ const Button = ({ children, className = '', variant = 'primary', type = 'button'
 
 const Input = (props: ComponentPropsWithoutRef<'input'>) => <input {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
 
-const Modal = ({ isOpen, onClose, children }: { isOpen: boolean, onClose: () => void, children: ReactNode }) => {
+// FIX: Made the 'children' prop optional to resolve multiple TypeScript errors.
+const Modal = ({ isOpen, onClose, children }: { isOpen: boolean, onClose: () => void, children?: ReactNode }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -1102,6 +1103,7 @@ const CreateNovelModal = ({ isOpen, onClose, onNovelCreated }: { isOpen: boolean
     const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     if (!user) return null;
 
@@ -1123,6 +1125,7 @@ const CreateNovelModal = ({ isOpen, onClose, onNovelCreated }: { isOpen: boolean
         setCoverImageFile(null);
         setCoverImagePreview(null);
         setError('');
+        setIsSubmitting(false);
     };
     
     const handleClose = () => {
@@ -1137,6 +1140,7 @@ const CreateNovelModal = ({ isOpen, onClose, onNovelCreated }: { isOpen: boolean
             return;
         }
         setError('');
+        setIsSubmitting(true);
 
         const novelData = {
             title,
@@ -1147,9 +1151,16 @@ const CreateNovelModal = ({ isOpen, onClose, onNovelCreated }: { isOpen: boolean
             status,
         };
         
-        const newNovel = await ApiService.createNovel(user, novelData, coverImageFile || undefined);
-        onNovelCreated(newNovel);
-        handleClose();
+        try {
+            const newNovel = await ApiService.createNovel(user, novelData, coverImageFile || undefined);
+            onNovelCreated(newNovel);
+            handleClose();
+        } catch (err) {
+            console.error("Failed to create novel:", err);
+            setError('An error occurred. Please try again.');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -1209,8 +1220,18 @@ const CreateNovelModal = ({ isOpen, onClose, onNovelCreated }: { isOpen: boolean
                     </div>
                 </div>
                  <div className="flex justify-end gap-2 pt-6 border-t border-gray-200 dark:border-gray-700 mt-4">
-                    <Button type="button" onClick={handleClose} variant="ghost">Cancel</Button>
-                    <Button type="submit">Create Novel</Button>
+                    <Button type="button" onClick={handleClose} variant="ghost" disabled={isSubmitting}>Cancel</Button>
+                    <Button type="submit" disabled={isSubmitting} className="min-w-[140px]">
+                        {isSubmitting ? (
+                            <span className="flex items-center justify-center">
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Creating...
+                            </span>
+                        ) : 'Create Novel'}
+                    </Button>
                 </div>
             </form>
         </Modal>
@@ -1227,6 +1248,7 @@ const EditNovelModal = ({ novel, isOpen, onClose, onNovelUpdated }: { novel: Nov
     const [coverImagePreview, setCoverImagePreview] = useState<string | null>(novel.coverImage);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -1243,6 +1265,7 @@ const EditNovelModal = ({ novel, isOpen, onClose, onNovelUpdated }: { novel: Nov
             return;
         }
         setError('');
+        setIsSubmitting(true);
 
         const novelData: Partial<Novel> = {
             title,
@@ -1253,11 +1276,18 @@ const EditNovelModal = ({ novel, isOpen, onClose, onNovelUpdated }: { novel: Nov
             coverImage: coverImagePreview || novel.coverImage,
         };
         
-        const updatedNovel = await ApiService.updateNovel(novel.id, novelData, coverImageFile || undefined);
-        if (updatedNovel) {
-          onNovelUpdated(updatedNovel);
+        try {
+            const updatedNovel = await ApiService.updateNovel(novel.id, novelData, coverImageFile || undefined);
+            if (updatedNovel) {
+              onNovelUpdated(updatedNovel);
+            }
+            onClose();
+        } catch (err) {
+            console.error("Failed to update novel:", err);
+            setError('An error occurred. Please try again.');
+        } finally {
+            setIsSubmitting(false);
         }
-        onClose();
     };
 
     return (
@@ -1304,8 +1334,18 @@ const EditNovelModal = ({ novel, isOpen, onClose, onNovelUpdated }: { novel: Nov
                     </div>
                 </div>
                  <div className="flex justify-end gap-2 pt-6 border-t border-gray-200 dark:border-gray-700 mt-4">
-                    <Button type="button" onClick={onClose} variant="ghost">Cancel</Button>
-                    <Button type="submit">Save Changes</Button>
+                    <Button type="button" onClick={onClose} variant="ghost" disabled={isSubmitting}>Cancel</Button>
+                    <Button type="submit" disabled={isSubmitting} className="min-w-[150px]">
+                        {isSubmitting ? (
+                            <span className="flex items-center justify-center">
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Saving...
+                            </span>
+                        ) : 'Save Changes'}
+                    </Button>
                 </div>
             </form>
         </Modal>

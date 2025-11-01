@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -570,7 +568,6 @@ const NovelDetailPage = () => {
     const [userRating, setUserRating] = useState<number | null>(null);
     const [readingProgress, setReadingProgress] = useState<{ chapterNumber: number; scrollPositionPercent: number; } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const viewTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (!id) return;
@@ -615,22 +612,19 @@ const NovelDetailPage = () => {
     }, [id, user]);
 
     useEffect(() => {
-        // This effect handles the time-based view increment logic.
         if (isLoading || !novel || !id || !user) {
             return;
         }
 
-        const viewIncrementedInSession = sessionStorage.getItem(`viewed_novel_${id}`);
-        const isAuthor = user.id === novel.authorId;
+        const incrementView = async () => {
+            const viewIncrementedInSession = sessionStorage.getItem(`viewed_novel_${id}`);
+            const isAuthor = user.id === novel.authorId;
 
-        if (!isAuthor && !viewIncrementedInSession) {
-            viewTimerRef.current = window.setTimeout(async () => {
-                if (!id) return;
-    
+            if (!isAuthor && !viewIncrementedInSession) {
+                sessionStorage.setItem(`viewed_novel_${id}`, 'true'); // Set immediately to prevent re-triggers
                 const { success } = await ApiService.incrementViews(id);
 
                 if (success) {
-                    sessionStorage.setItem(`viewed_novel_${id}`, 'true');
                     // Re-fetch the novel to get the updated count from the DB
                     const updatedNovel = await ApiService.getNovel(id);
                     if (updatedNovel) {
@@ -638,16 +632,10 @@ const NovelDetailPage = () => {
                         updateNovelInList(id, { views: updatedNovel.views });
                     }
                 }
-            }, 60000); // 1 minute
-        }
-
-        // Cleanup function to clear the timer if the user navigates away.
-        return () => {
-            if (viewTimerRef.current) {
-                clearTimeout(viewTimerRef.current);
             }
         };
 
+        incrementView();
     }, [isLoading, novel, id, user, updateNovelInList]);
     
     const handleToggleBookmark = async () => {
@@ -809,7 +797,6 @@ const ReaderPage = () => {
     const [isChapterMenuOpen, setIsChapterMenuOpen] = useState(false);
     const chapterMenuRef = useRef<HTMLDivElement>(null);
     const saveTimeoutRef = useRef<number | null>(null);
-    const viewTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (novelId && chapterId) {
@@ -886,16 +873,15 @@ const ReaderPage = () => {
     useEffect(() => {
         if (!chapter || !novel || !user) return;
 
-        const viewIncrementedInSession = sessionStorage.getItem(`viewed_chapter_${chapter.id}`);
-        const isAuthor = user.id === novel.authorId;
+        const incrementView = async () => {
+            const viewIncrementedInSession = sessionStorage.getItem(`viewed_chapter_${chapter.id}`);
+            const isAuthor = user.id === novel.authorId;
 
-        if (!isAuthor && !viewIncrementedInSession) {
-            viewTimerRef.current = window.setTimeout(async () => {
-                if (!novel || !chapter) return;
+            if (!isAuthor && !viewIncrementedInSession) {
+                sessionStorage.setItem(`viewed_chapter_${chapter.id}`, 'true'); // Set immediately
                 const { success } = await ApiService.incrementViews(novel.id, chapter.id);
 
                 if (success) {
-                    sessionStorage.setItem(`viewed_chapter_${chapter.id}`, 'true');
                     // Re-fetch the novel to get the true, updated view counts
                     const updatedNovel = await ApiService.getNovel(novel.id);
                     if (updatedNovel) {
@@ -907,14 +893,10 @@ const ReaderPage = () => {
                         }
                     }
                 }
-            }, 60000); // 1 minute
-        }
-
-        return () => {
-            if (viewTimerRef.current) {
-                clearTimeout(viewTimerRef.current);
             }
         };
+
+        incrementView();
     }, [chapter, novel, user]);
 
     useEffect(() => {

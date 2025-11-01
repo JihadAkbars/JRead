@@ -16,6 +16,9 @@ export interface User {
     twitter?: string;
     instagram?: string;
   };
+  lastViewedNovelId?: string | null;
+  bookmarksArePublic: boolean;
+  activityIsPublic: boolean;
 }
 
 export enum NovelStatus {

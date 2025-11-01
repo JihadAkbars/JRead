@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -43,7 +44,6 @@ const Button = ({ children, className = '', variant = 'primary', type = 'button'
 
 const Input = (props: ComponentPropsWithoutRef<'input'>) => <input {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
 
-// FIX: Made the 'children' prop optional to resolve multiple TypeScript errors.
 const Modal = ({ isOpen, onClose, children }: { isOpen: boolean, onClose: () => void, children?: ReactNode }) => {
   if (!isOpen) return null;
   return (
@@ -1667,6 +1667,50 @@ const AuthorDashboardPage = () => {
     );
 };
 
+const EmailVerifiedPage = () => {
+    return (
+        <div className="container mx-auto px-4 py-16 text-center">
+            <div className="bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-lg max-w-md mx-auto">
+                <svg className="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h1 className="text-3xl font-bold text-light-text dark:text-dark-text mt-4">Email Verified!</h1>
+                <p className="text-gray-600 dark:text-gray-400 mt-2">
+                    Thank you for confirming your email. You can now explore all the features of J Read.
+                </p>
+                <Link to="/">
+                    <Button className="mt-6">Start Reading</Button>
+                </Link>
+            </div>
+        </div>
+    );
+};
+
+const AppRouter = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const currentHash = window.location.hash;
+    // Supabase redirects with #access_token=...&type=signup
+    if (currentHash.includes('type=signup') && !currentHash.includes('/verified-email')) {
+      navigate('/verified-email', { replace: true });
+    }
+  }, [navigate]);
+
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/novel/:id" element={<NovelDetailPage />} />
+      <Route path="/read/:novelId/:chapterId" element={<ReaderPage />} />
+      <Route path="/user/:userId" element={<ProfilePage />} />
+      <Route path="/dashboard" element={<AuthorDashboardPage />} />
+      <Route path="/admin" element={<AdminPage />} />
+      <Route path="/editor/:novelId/:chapterNumber" element={<ChapterEditorPage />} />
+      <Route path="/verified-email" element={<EmailVerifiedPage />} />
+    </Routes>
+  );
+};
+
 
 // --- APP COMPONENT --- //
 const App = () => {
@@ -1682,34 +1726,25 @@ const App = () => {
       return;
     }
     
-    // onAuthStateChange fires on initial load and whenever the auth state changes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      // As soon as this callback fires, we know the session status.
-      // We can hide the main loading screen.
       setLoading(false);
       setIsAuthenticated(!!session);
 
       if (session?.user) {
-        // If there's a user, fetch their profile data in the background.
-        // The UI is already interactive at this point.
         ApiService.getUser(session.user.id)
           .then((profile) => {
             if (profile) {
               setUser(profile);
             } else {
-              // This is an inconsistent state (auth user without a profile).
-              // Log the user out to prevent errors.
               console.warn("No profile found for authenticated user. Logging out.");
               supabase.auth.signOut();
             }
           })
           .catch((error) => {
             console.error("Error fetching user profile:", error);
-            // Log out on error to be safe.
             supabase.auth.signOut();
           });
       } else {
-        // If there's no session, clear the user object.
         setUser(null);
       }
     });
@@ -1747,8 +1782,6 @@ const App = () => {
       return { success: false, message: error.message };
     }
     
-    // With the database trigger, the profile is created automatically.
-    // We just need to check if the user object was returned (which implies success).
     if (data.user) {
         return { success: true, message: data.session ? 'Signup successful!' : 'Signup successful! Please check your email for a verification link.' };
     }
@@ -1810,15 +1843,7 @@ const App = () => {
         <div className="flex flex-col min-h-screen font-sans text-light-text dark:text-dark-text">
           <Header />
           <main className="flex-grow">
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/novel/:id" element={<NovelDetailPage />} />
-              <Route path="/read/:novelId/:chapterId" element={<ReaderPage />} />
-              <Route path="/user/:userId" element={<ProfilePage />} />
-              <Route path="/dashboard" element={<AuthorDashboardPage />} />
-              <Route path="/admin" element={<AdminPage />} />
-              <Route path="/editor/:novelId/:chapterNumber" element={<ChapterEditorPage />} />
-            </Routes>
+            <AppRouter />
           </main>
         </div>
         <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />

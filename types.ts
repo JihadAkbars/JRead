@@ -1,4 +1,3 @@
-
 export enum UserRole {
   USER = 'USER',
   AUTHOR = 'AUTHOR',
@@ -17,14 +16,6 @@ export interface User {
     twitter?: string;
     instagram?: string;
   };
-  lastViewedNovelId?: string | null;
-  bookmarksArePublic: boolean;
-  activityIsPublic: boolean;
-}
-
-export enum NovelStatus {
-    DRAFT = 'DRAFT',
-    PUBLISHED = 'PUBLISHED',
 }
 
 export interface Novel {
@@ -36,7 +27,7 @@ export interface Novel {
   synopsis: string;
   genre: string;
   tags: string[];
-  status: NovelStatus;
+  status: string;
   rating: number;
   likes: number;
   language: string;

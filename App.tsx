@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -1048,22 +1049,34 @@ const AdminDashboard = () => {
     
     const handleDeleteUser = async (userId: string, username: string) => {
         if (window.confirm(`Are you sure you want to delete user "${username}"? This action is irreversible.`)) {
-            const { success } = await ApiService.adminDeleteUser(userId);
+            const { success, error } = await ApiService.adminDeleteUser(userId);
             if (success) {
                 setUsers(prev => prev.filter(u => u.id !== userId));
+                alert(`Successfully deleted user "${username}".`);
             } else {
-                alert(`Failed to delete user "${username}". Make sure the backend RPC function is set up correctly. Check the console for more details.`);
+                let errorMessage = `Failed to delete user "${username}". Check the console for details.`;
+                const errorMsgLower = error?.message?.toLowerCase() || '';
+                if (errorMsgLower.includes('function admin_delete_user') && errorMsgLower.includes('does not exist')) {
+                    errorMessage = `Failed to delete user "${username}".\n\nREASON: The required backend function ('admin_delete_user') is missing.\n\nFIX: Please go to the 'data.ts' file, copy the SQL script from the comments above the 'adminDeleteUser' function, and run it in your Supabase SQL Editor to create the function.`;
+                }
+                alert(errorMessage);
             }
         }
     };
     
     const handleDeleteNovel = async (novelId: string, title: string) => {
         if (window.confirm(`Are you sure you want to delete the novel "${title}"?`)) {
-            const { success } = await ApiService.adminDeleteNovel(novelId);
+            const { success, error } = await ApiService.adminDeleteNovel(novelId);
             if (success) {
                 setNovels(prev => prev.filter(n => n.id !== novelId));
+                alert(`Successfully deleted novel "${title}".`);
             } else {
-                alert(`Failed to delete novel "${title}". Make sure the backend RPC function is set up correctly. Check the console for more details.`);
+                let errorMessage = `Failed to delete novel "${title}". Check the console for details.`;
+                const errorMsgLower = error?.message?.toLowerCase() || '';
+                if (errorMsgLower.includes('function admin_delete_novel') && errorMsgLower.includes('does not exist')) {
+                    errorMessage = `Failed to delete novel "${title}".\n\nREASON: The required backend function ('admin_delete_novel') is missing.\n\nFIX: Please go to the 'data.ts' file, copy the SQL script from the comments above the 'adminDeleteNovel' function, and run it in your Supabase SQL Editor to create the function.`;
+                }
+                alert(errorMessage);
             }
         }
     };

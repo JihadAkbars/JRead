@@ -1,4 +1,3 @@
-
 export enum UserRole {
   USER = 'USER',
   AUTHOR = 'AUTHOR',
@@ -9,8 +8,6 @@ export interface User {
   id: string;
   username: string;
   email: string;
-  // FIX: Add password field to support case-sensitive login and post-signup flow.
-  password?: string; // Made optional for security reasons in real apps, but required in our mock
   role: UserRole;
   profilePicture: string;
   penName?: string;

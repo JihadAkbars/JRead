@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -806,20 +804,28 @@ const ReaderPage = () => {
     }, [location.state]);
 
     useEffect(() => {
-        // View counting logic
-        const viewTimer = setTimeout(() => {
-            if (user && novel && chapter && user.id !== novel.authorId) {
-                if (!viewedChaptersRef.current.has(chapter.id)) {
-                    ApiService.incrementViews(novel.id, chapter.id);
-                    viewedChaptersRef.current.add(chapter.id);
-                }
-            }
-        }, 30000); // 30 seconds
+        // This effect is specifically for view counting. Its dependencies are minimized
+        // to stable IDs to prevent the timer from being reset by unrelated re-renders.
+        const currentChapterId = chapter?.id;
+        const currentNovelId = novel?.id;
+        const currentAuthorId = novel?.authorId;
+        const currentUserId = user?.id;
 
-        return () => {
-            clearTimeout(viewTimer);
-        };
-    }, [user, novel, chapter]);
+        if (currentUserId && currentNovelId && currentChapterId && currentUserId !== currentAuthorId) {
+            if (!viewedChaptersRef.current.has(currentChapterId)) {
+                const timer = setTimeout(() => {
+                    ApiService.incrementViews(currentNovelId, currentChapterId);
+                    viewedChaptersRef.current.add(currentChapterId);
+                }, 30000); // 30 seconds
+
+                // Cleanup function to clear the timer if the component unmounts or dependencies change.
+                return () => {
+                    clearTimeout(timer);
+                };
+            }
+        }
+    }, [chapter?.id, novel?.id, user?.id]); // Using stable IDs as dependencies
+
 
     useEffect(() => {
         const handleScroll = () => {

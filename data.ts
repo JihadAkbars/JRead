@@ -34,7 +34,6 @@ export const ApiService = {
   async getUsers(): Promise<User[]> {
     const { data, error } = await supabase.from('profiles').select('*');
     if (error) throw error;
-    if (!data) return [];
     return toCamelCase(data) as User[];
   },
 
@@ -76,7 +75,6 @@ export const ApiService = {
   async getNovels(): Promise<Novel[]> {
     const { data, error } = await supabase.from('novels').select('*').order('created_at', { ascending: false });
     if (error) throw error;
-    if (!data) return [];
     return (toCamelCase(data) as Novel[]).map(n => ({...n, chapters: []})); // chapters fetched separately
   },
 
@@ -102,7 +100,6 @@ export const ApiService = {
   async getNovelsByAuthor(authorId: string): Promise<Novel[]> {
     const { data, error } = await supabase.from('novels').select('*').eq('author_id', authorId).order('created_at', { ascending: false });
     if (error) throw error;
-    if (!data) return [];
     return (toCamelCase(data) as Novel[]).map(n => ({...n, chapters: []})); // chapters fetched separately
   },
 
@@ -276,7 +273,6 @@ export const ApiService = {
           console.error('Error fetching bookmarked novels:', error);
           return [];
       }
-      if (!data) return [];
       return toCamelCase(data.map((item: any) => item.novels).filter(Boolean)) as Novel[];
   },
 
@@ -329,15 +325,8 @@ export const ApiService = {
         return null;
     }
     
-    // FIX: Supabase's type inference can be incorrect for joined tables, sometimes returning an array for a to-one relationship.
-    // This code now handles both cases (object or array) to prevent type errors.
-    const chapterData = Array.isArray(data.chapters) ? data.chapters[0] : data.chapters;
-
-    if (!chapterData) {
-        return null;
-    }
-
-    const chapter = chapterData as { chapter_number: number };
+    // Supabase returns related table as an object if it's a to-one relationship
+    const chapter = data.chapters as { chapter_number: number };
 
     return {
         chapterId: data.chapter_id,

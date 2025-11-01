@@ -537,41 +537,52 @@ const NovelDetailPage = () => {
     const [readingProgress, setReadingProgress] = useState<{ chapterNumber: number; scrollPositionPercent: number; } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const fetchNovelData = async (novelId: string) => {
-        const novelData = await ApiService.getNovel(novelId);
-        if (novelData) {
+    useEffect(() => {
+        if (!id) return;
+
+        const loadData = async () => {
+            setIsLoading(true);
+            
+            let novelData = await ApiService.getNovel(id);
+
+            if (!novelData) {
+                setNovel(null);
+                setIsLoading(false);
+                return;
+            }
+
+            const isAuthorViewing = user && user.id === novelData.authorId;
+            if (!isAuthorViewing) {
+                await ApiService.incrementNovelView(id);
+                novelData = { ...novelData, views: novelData.views + 1 };
+            }
+            
             setNovel(novelData);
+
             if (user) {
+                ApiService.setLastViewedNovel(user.id, id);
+                
                 const [bookmarkStatus, interactionStatus, progress] = await Promise.all([
                     ApiService.isNovelBookmarked(user.id, novelData.id),
                     ApiService.getUserInteractionStatus(novelData.id, user.id),
                     ApiService.getReadingProgress(user.id, novelData.id)
                 ]);
+                
                 setIsBookmarked(bookmarkStatus);
                 setHasLiked(interactionStatus.hasLiked);
                 setUserRating(interactionStatus.userRating);
                 setReadingProgress(progress);
+            } else {
+                setIsBookmarked(false);
+                setHasLiked(false);
+                setUserRating(null);
+                setReadingProgress(null);
             }
-        } else {
-            setNovel(null);
-        }
-    };
+            
+            setIsLoading(false);
+        };
 
-    useEffect(() => {
-        if(!id) return;
-        
-        setIsLoading(true);
-        ApiService.incrementNovelView(id).then(() => {
-             setNovel(prev => prev ? { ...prev, views: prev.views + 1 } : null);
-        });
-
-        fetchNovelData(id)
-            .then(() => {
-                if (user) {
-                    ApiService.setLastViewedNovel(user.id, id);
-                }
-            })
-            .finally(() => setIsLoading(false));
+        loadData();
 
     }, [id, user]);
     
@@ -612,7 +623,8 @@ const NovelDetailPage = () => {
          const { success } = await ApiService.submitRating(novel.id, user.id, rating);
          if (success) {
             // Refetch novel to get updated average rating from the DB trigger
-            fetchNovelData(novel.id);
+            const updatedNovel = await ApiService.getNovel(novel.id);
+            if (updatedNovel) setNovel(updatedNovel);
          } else {
             setUserRating(oldUserRating); // Revert on failure
          }

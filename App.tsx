@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -568,6 +569,7 @@ const NovelDetailPage = () => {
     const [userRating, setUserRating] = useState<number | null>(null);
     const [readingProgress, setReadingProgress] = useState<{ chapterNumber: number; scrollPositionPercent: number; } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const viewTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (!id) return;
@@ -575,7 +577,6 @@ const NovelDetailPage = () => {
         const loadData = async () => {
             setIsLoading(true);
             
-            const viewIncrementedInSession = sessionStorage.getItem(`viewed_${id}`);
             const novelData = await ApiService.getNovel(id);
 
             if (!novelData) {
@@ -584,22 +585,7 @@ const NovelDetailPage = () => {
                 return;
             }
 
-            const isAuthor = user && user.id === novelData.authorId;
-            
-            if (!isAuthor && !viewIncrementedInSession) {
-                ApiService.incrementNovelView(id);
-                sessionStorage.setItem(`viewed_${id}`, 'true');
-                const newViews = novelData.views + 1;
-                updateNovelInList(id, { views: newViews });
-                setNovel(prev => ({ ...(prev || novelData), ...novelData, views: newViews }));
-            } else {
-                 setNovel(prev => {
-                    if (prev && prev.id === id && prev.views > novelData.views) {
-                        return { ...novelData, views: prev.views };
-                    }
-                    return novelData;
-                });
-            }
+            setNovel(novelData);
 
             if (user) {
                 ApiService.setLastViewedNovel(user.id, id);
@@ -625,8 +611,37 @@ const NovelDetailPage = () => {
         };
 
         loadData();
-
     }, [id, user]);
+
+    useEffect(() => {
+        // This effect handles the time-based view increment logic.
+        if (isLoading || !novel || !id) {
+            return;
+        }
+
+        const viewIncrementedInSession = sessionStorage.getItem(`viewed_${id}`);
+        const isAuthor = user && user.id === novel.authorId;
+
+        if (!isAuthor && !viewIncrementedInSession) {
+            viewTimerRef.current = window.setTimeout(() => {
+                ApiService.incrementNovelView(id);
+                sessionStorage.setItem(`viewed_${id}`, 'true');
+                
+                const newViews = (novel.views || 0) + 1;
+                setNovel(prev => prev ? { ...prev, views: newViews } : null);
+                updateNovelInList(id, { views: newViews });
+
+            }, 120000); // 2 minutes
+        }
+
+        // Cleanup function to clear the timer if the user navigates away.
+        return () => {
+            if (viewTimerRef.current) {
+                clearTimeout(viewTimerRef.current);
+            }
+        };
+
+    }, [isLoading, novel, id, user, updateNovelInList]);
     
     const handleToggleBookmark = async () => {
         if (!user) { showAuthModal(); return; }

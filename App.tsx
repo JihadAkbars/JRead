@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
-import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
 import { User, UserRole, Novel, Chapter, Comment, NovelStatus } from './types';
 import { ApiService } from './data';
@@ -534,6 +534,7 @@ const NovelDetailPage = () => {
     const [isBookmarked, setIsBookmarked] = useState(false);
     const [hasLiked, setHasLiked] = useState(false);
     const [userRating, setUserRating] = useState<number | null>(null);
+    const [readingProgress, setReadingProgress] = useState<{ chapterNumber: number; scrollPositionPercent: number; } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchNovelData = async (novelId: string) => {
@@ -541,13 +542,15 @@ const NovelDetailPage = () => {
         if (novelData) {
             setNovel(novelData);
             if (user) {
-                const [bookmarkStatus, interactionStatus] = await Promise.all([
+                const [bookmarkStatus, interactionStatus, progress] = await Promise.all([
                     ApiService.isNovelBookmarked(user.id, novelData.id),
-                    ApiService.getUserInteractionStatus(novelData.id, user.id)
+                    ApiService.getUserInteractionStatus(novelData.id, user.id),
+                    ApiService.getReadingProgress(user.id, novelData.id)
                 ]);
                 setIsBookmarked(bookmarkStatus);
                 setHasLiked(interactionStatus.hasLiked);
                 setUserRating(interactionStatus.userRating);
+                setReadingProgress(progress);
             }
         } else {
             setNovel(null);
@@ -558,7 +561,6 @@ const NovelDetailPage = () => {
         if(!id) return;
         
         setIsLoading(true);
-        // Increment view count optimistically and don't wait for it
         ApiService.incrementNovelView(id).then(() => {
              setNovel(prev => prev ? { ...prev, views: prev.views + 1 } : null);
         });
@@ -619,6 +621,8 @@ const NovelDetailPage = () => {
     if (isLoading) return <div className="text-center py-10">Loading novel...</div>;
     if (!novel) return <div className="text-center py-10">Novel not found.</div>;
 
+    const firstChapter = novel.chapters?.[0];
+
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="flex flex-col md:flex-row gap-8">
@@ -659,9 +663,17 @@ const NovelDetailPage = () => {
                         {novel.tags.map(tag => <span key={tag} className="bg-primary/20 text-primary px-3 py-1 text-sm rounded-full">#{tag}</span>)}
                     </div>
                     <div className="flex items-center gap-2">
-                        <Link to={`/read/${novel.id}/1`}>
-                            <Button className="w-full md:w-auto">Read First Chapter</Button>
-                        </Link>
+                        {readingProgress ? (
+                            <Link to={`/read/${novel.id}/${readingProgress.chapterNumber}`} state={{ scrollPositionPercent: readingProgress.scrollPositionPercent }}>
+                                <Button className="w-full md:w-auto">Continue (Ch. {readingProgress.chapterNumber})</Button>
+                            </Link>
+                        ) : firstChapter ? (
+                            <Link to={`/read/${novel.id}/${firstChapter.chapterNumber}`}>
+                                <Button className="w-full md:w-auto">Read First Chapter</Button>
+                            </Link>
+                        ) : (
+                             <Button className="w-full md:w-auto" disabled>No Chapters Available</Button>
+                        )}
                         <Button onClick={handleLikeToggle} variant="ghost" className="flex items-center gap-2 !px-3" title={hasLiked ? "Unlike novel" : "Like novel"}>
                             <HeartIcon className={`w-6 h-6 transition-colors ${hasLiked ? 'text-red-500' : ''}`} filled={hasLiked} />
                         </Button>
@@ -695,6 +707,8 @@ const NovelDetailPage = () => {
 
 const ReaderPage = () => {
     const { novelId, chapterId } = useParams();
+    const { user } = useAuth();
+    const location = useLocation();
     const [chapter, setChapter] = useState<Chapter | null>(null);
     const [novel, setNovel] = useState<Novel | null>(null);
     const [comments, setComments] = useState<Comment[]>([]);
@@ -704,13 +718,12 @@ const ReaderPage = () => {
     const currentChapterNumber = parseInt(chapterId || '1');
     const [isChapterMenuOpen, setIsChapterMenuOpen] = useState(false);
     const chapterMenuRef = useRef<HTMLDivElement>(null);
+    const saveTimeoutRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (novelId && chapterId) {
             window.scrollTo(0, 0);
             const chapNum = parseInt(chapterId, 10);
-
-            // Reset state for navigation
             setNovel(null);
             setChapter(null);
             setComments([]);
@@ -729,6 +742,55 @@ const ReaderPage = () => {
             });
         }
     }, [novelId, chapterId]);
+    
+    useEffect(() => {
+        const { scrollPositionPercent } = location.state || {};
+        if (typeof scrollPositionPercent === 'number') {
+            setTimeout(() => {
+                const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+                if (scrollHeight > 0) {
+                    window.scrollTo({ top: scrollHeight * scrollPositionPercent, behavior: 'smooth' });
+                }
+            }, 100);
+        }
+    }, [location.state]);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            if (!user || !novelId || !chapter) return;
+
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+
+            saveTimeoutRef.current = window.setTimeout(() => {
+                const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+                if (scrollHeight <= 0) return;
+                const percent = window.scrollY / scrollHeight;
+                ApiService.saveReadingProgress(user.id, novelId, chapter.id, Math.min(percent, 1));
+            }, 2000);
+        };
+
+        const handleBeforeUnload = () => {
+            if (!user || !novelId || !chapter) return;
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+            const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+            if (scrollHeight <= 0) return;
+            const percent = window.scrollY / scrollHeight;
+            ApiService.saveReadingProgress(user.id, novelId, chapter.id, Math.min(percent, 1));
+        };
+
+        window.addEventListener('scroll', handleScroll);
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, [user, novelId, chapter]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {

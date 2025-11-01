@@ -4,7 +4,7 @@ import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
 import { User, UserRole, Novel, Chapter, Comment, NovelStatus } from './types';
 import { ApiService } from './data';
 import { GENRES } from './constants';
-import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, XIcon, MenuIcon, TrashIcon, EditIcon, PlusIcon, EyeIcon, EyeOffIcon, UploadIcon } from './components/Icons';
+import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon, MenuIcon, TrashIcon, EditIcon, PlusIcon, EyeIcon, EyeOffIcon, UploadIcon } from './components/Icons';
 
 // --- AUTH CONTEXT --- //
 interface AuthContextType {
@@ -95,11 +95,19 @@ const NovelCard: React.FC<{ novel: Novel }> = ({ novel }) => {
       <div className="p-4">
         <h3 className="font-bold text-lg text-light-text dark:text-dark-text truncate group-hover:text-primary transition-colors">{novel.title}</h3>
         <p className="text-sm text-gray-500 dark:text-gray-400">{novel.authorName}</p>
-        <div className="flex items-center mt-2 text-sm text-gray-600 dark:text-gray-300">
-          <StarIcon className="w-4 h-4 text-amber-400 mr-1" filled />
-          <span>{novel.rating}</span>
-          <span className="mx-2">•</span>
-          <span>{novel.genre}</span>
+        <div className="flex items-center mt-2 text-sm text-gray-600 dark:text-gray-300 gap-3">
+          <div className="flex items-center" title="Rating">
+            <StarIcon className="w-4 h-4 text-amber-400 mr-1" filled />
+            <span>{novel.rating?.toFixed(1) || '0.0'}</span>
+          </div>
+          <div className="flex items-center" title="Views">
+            <EyeIcon className="w-4 h-4 mr-1" />
+            <span>{novel.views || 0}</span>
+          </div>
+          <div className="flex items-center" title="Likes">
+            <HeartIcon className="w-4 h-4 mr-1 text-red-500" />
+            <span>{novel.likes || 0}</span>
+          </div>
         </div>
       </div>
     </Link>
@@ -486,42 +494,126 @@ const HomePage = () => {
   );
 };
 
+const InteractiveRating = ({ currentRating, userRating, onRate, disabled }: { currentRating: number, userRating: number | null, onRate: (rating: number) => void, disabled: boolean }) => {
+    const [hoverRating, setHoverRating] = useState(0);
+    const auth = useAuth();
+    const ratingToShow = hoverRating || userRating || 0;
+
+    return (
+        <div>
+            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{userRating ? 'Your Rating' : 'Rate this novel'}</p>
+            <div className="flex items-center gap-1" onMouseLeave={() => setHoverRating(0)}>
+                {[1, 2, 3, 4, 5].map(star => (
+                    <button 
+                        key={star}
+                        onMouseEnter={() => !disabled && setHoverRating(star)}
+                        onClick={() => {
+                            if (disabled) return;
+                            auth.isAuthenticated ? onRate(star) : auth.showAuthModal()
+                        }}
+                        className={`text-amber-400 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                        aria-label={`Rate ${star} stars`}
+                    >
+                        <StarIcon className="w-8 h-8" filled={star <= ratingToShow} />
+                    </button>
+                ))}
+                 <div className="ml-3 text-center">
+                    <span className="text-3xl font-bold">{currentRating?.toFixed(1) || '0.0'}</span>
+                    <span className="text-gray-500">/ 5</span>
+                 </div>
+            </div>
+        </div>
+    );
+};
+
 
 const NovelDetailPage = () => {
     const { id } = useParams();
     const { user, showAuthModal } = useAuth();
     const [novel, setNovel] = useState<Novel | null>(null);
     const [isBookmarked, setIsBookmarked] = useState(false);
+    const [hasLiked, setHasLiked] = useState(false);
+    const [userRating, setUserRating] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+
+    const fetchNovelData = async (novelId: string) => {
+        const novelData = await ApiService.getNovel(novelId);
+        if (novelData) {
+            setNovel(novelData);
+            if (user) {
+                const [bookmarkStatus, interactionStatus] = await Promise.all([
+                    ApiService.isNovelBookmarked(user.id, novelData.id),
+                    ApiService.getUserInteractionStatus(novelData.id, user.id)
+                ]);
+                setIsBookmarked(bookmarkStatus);
+                setHasLiked(interactionStatus.hasLiked);
+                setUserRating(interactionStatus.userRating);
+            }
+        } else {
+            setNovel(null);
+        }
+    };
 
     useEffect(() => {
         if(!id) return;
         
         setIsLoading(true);
-        ApiService.getNovel(id).then(data => {
-            setNovel(data || null)
-            
-            if (user && data) {
-                ApiService.isNovelBookmarked(user.id, data.id).then(setIsBookmarked);
-                ApiService.setLastViewedNovel(user.id, data.id); // fire-and-forget
-            }
-        }).finally(() => setIsLoading(false));
+        // Increment view count optimistically and don't wait for it
+        ApiService.incrementNovelView(id).then(() => {
+             setNovel(prev => prev ? { ...prev, views: prev.views + 1 } : null);
+        });
+
+        fetchNovelData(id)
+            .then(() => {
+                if (user) {
+                    ApiService.setLastViewedNovel(user.id, id);
+                }
+            })
+            .finally(() => setIsLoading(false));
 
     }, [id, user]);
     
     const handleToggleBookmark = async () => {
-        if (!user) {
-            showAuthModal();
-            return;
-        }
+        if (!user) { showAuthModal(); return; }
         if (!novel) return;
 
-        if (isBookmarked) {
-            await ApiService.removeBookmark(user.id, novel.id);
-        } else {
+        const newBookmarkState = !isBookmarked;
+        setIsBookmarked(newBookmarkState);
+        if (newBookmarkState) {
             await ApiService.addBookmark(user.id, novel.id);
+        } else {
+            await ApiService.removeBookmark(user.id, novel.id);
         }
-        setIsBookmarked(!isBookmarked);
+    };
+
+    const handleLikeToggle = async () => {
+        if (!user) { showAuthModal(); return; }
+        if (!novel) return;
+
+        const newLikedState = !hasLiked;
+        setHasLiked(newLikedState);
+        setNovel(prev => prev ? { ...prev, likes: prev.likes + (newLikedState ? 1 : -1) } : null);
+
+        if (newLikedState) {
+            await ApiService.likeNovel(user.id, novel.id);
+        } else {
+            await ApiService.unlikeNovel(user.id, novel.id);
+        }
+    };
+
+    const handleRatingSubmit = async (rating: number) => {
+         if (!user || !novel) return;
+         
+         const oldUserRating = userRating;
+         setUserRating(rating); // Optimistic UI update
+         
+         const { success } = await ApiService.submitRating(novel.id, user.id, rating);
+         if (success) {
+            // Refetch novel to get updated average rating from the DB trigger
+            fetchNovelData(novel.id);
+         } else {
+            setUserRating(oldUserRating); // Revert on failure
+         }
     };
 
     if (isLoading) return <div className="text-center py-10">Loading novel...</div>;
@@ -536,11 +628,32 @@ const NovelDetailPage = () => {
                 <div className="md:w-2/3">
                     <h1 className="text-4xl font-bold text-light-text dark:text-dark-text">{novel.title}</h1>
                     <Link to={`/user/${novel.authorId}`} className="text-lg text-gray-600 dark:text-gray-400 mt-2 hover:text-primary">by {novel.authorName}</Link>
-                    <div className="flex items-center gap-4 my-4">
-                        <div className="flex items-center text-lg"><StarIcon className="w-5 h-5 text-amber-400 mr-2" filled/> {novel.rating}</div>
-                        <div className="text-gray-500">{novel.views.toLocaleString()} Views</div>
-                        <div className="text-gray-500">{novel.likes.toLocaleString()} Likes</div>
+                    
+                    <div className="flex items-center gap-6 my-4 text-gray-600 dark:text-gray-400 border-y py-3 border-gray-200 dark:border-gray-700">
+                        <div className="text-center">
+                            <p className="text-2xl font-bold text-light-text dark:text-dark-text">{novel.views?.toLocaleString() || 0}</p>
+                            <p className="text-sm">Views</p>
+                        </div>
+                         <div className="text-center">
+                            <p className="text-2xl font-bold text-light-text dark:text-dark-text">{novel.likes?.toLocaleString() || 0}</p>
+                            <p className="text-sm">Likes</p>
+                        </div>
+                        <div className="text-center">
+                            <p className="text-2xl font-bold text-light-text dark:text-dark-text">{novel.chapters?.length || 0}</p>
+                            <p className="text-sm">Chapters</p>
+                        </div>
                     </div>
+
+                    <div className="my-6">
+                        <InteractiveRating 
+                            currentRating={novel.rating} 
+                            userRating={userRating} 
+                            onRate={handleRatingSubmit}
+                            disabled={!user || user.id === novel.authorId}
+                        />
+                         {user && user.id === novel.authorId && <p className="text-xs text-gray-500 mt-1">Authors cannot rate their own work.</p>}
+                    </div>
+
                     <p className="text-gray-700 dark:text-gray-300 leading-relaxed my-4">{novel.synopsis}</p>
                     <div className="flex flex-wrap gap-2 mb-6">
                         {novel.tags.map(tag => <span key={tag} className="bg-primary/20 text-primary px-3 py-1 text-sm rounded-full">#{tag}</span>)}
@@ -549,9 +662,11 @@ const NovelDetailPage = () => {
                         <Link to={`/read/${novel.id}/1`}>
                             <Button className="w-full md:w-auto">Read First Chapter</Button>
                         </Link>
+                        <Button onClick={handleLikeToggle} variant="ghost" className="flex items-center gap-2 !px-3" title={hasLiked ? "Unlike novel" : "Like novel"}>
+                            <HeartIcon className={`w-6 h-6 transition-colors ${hasLiked ? 'text-red-500' : ''}`} filled={hasLiked} />
+                        </Button>
                          <Button onClick={handleToggleBookmark} variant="ghost" className="flex items-center gap-2 !px-3" title={isBookmarked ? "Remove from bookmarks" : "Add to bookmarks"}>
-                            <BookmarkIcon className={`w-6 h-6 ${isBookmarked ? 'text-primary' : ''}`} filled={isBookmarked} />
-                            <span className="hidden md:inline">{isBookmarked ? 'Bookmarked' : 'Bookmark'}</span>
+                            <BookmarkIcon className={`w-6 h-6 transition-colors ${isBookmarked ? 'text-primary' : ''}`} filled={isBookmarked} />
                         </Button>
                     </div>
                 </div>

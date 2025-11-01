@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -45,9 +46,14 @@ const NovelsProvider = ({ children }: { children: ReactNode }) => {
     useEffect(() => {
         const fetchNovels = async () => {
             setLoading(true);
-            const data = await ApiService.getNovels();
-            setNovels(data);
-            setLoading(false);
+            try {
+                const data = await ApiService.getNovels();
+                setNovels(data);
+            } catch (error) {
+                console.error("Failed to fetch novels:", error);
+            } finally {
+                setLoading(false);
+            }
         };
         fetchNovels();
     }, []);
@@ -464,33 +470,36 @@ const NovelDetailPage = () => {
 
         const loadData = async () => {
             setIsLoading(true);
-            
-            const novelData = await ApiService.getNovel(id);
-
-            if (!novelData) {
+            try {
+                const novelData = await ApiService.getNovel(id);
+    
+                if (!novelData) {
+                    setNovel(null);
+                    return;
+                }
+    
+                setNovel(novelData);
+    
+                if (user) {
+                    const [bookmarkStatus, interactionStatus] = await Promise.all([
+                        ApiService.isNovelBookmarked(user.id, novelData.id),
+                        ApiService.getUserInteractionStatus(novelData.id, user.id),
+                    ]);
+                    
+                    setIsBookmarked(bookmarkStatus);
+                    setHasLiked(interactionStatus.hasLiked);
+                    setUserRating(interactionStatus.userRating);
+                } else {
+                    setIsBookmarked(false);
+                    setHasLiked(false);
+                    setUserRating(null);
+                }
+            } catch (error) {
+                console.error("Failed to load novel details:", error);
                 setNovel(null);
+            } finally {
                 setIsLoading(false);
-                return;
             }
-
-            setNovel(novelData);
-
-            if (user) {
-                const [bookmarkStatus, interactionStatus] = await Promise.all([
-                    ApiService.isNovelBookmarked(user.id, novelData.id),
-                    ApiService.getUserInteractionStatus(novelData.id, user.id),
-                ]);
-                
-                setIsBookmarked(bookmarkStatus);
-                setHasLiked(interactionStatus.hasLiked);
-                setUserRating(interactionStatus.userRating);
-            } else {
-                setIsBookmarked(false);
-                setHasLiked(false);
-                setUserRating(null);
-            }
-            
-            setIsLoading(false);
         };
 
         loadData();
@@ -640,21 +649,30 @@ const ReaderPage = () => {
     const currentChapterNumber = parseInt(chapterId || '1');
 
     useEffect(() => {
-        if (novelId && chapterId) {
-            const chapNum = parseInt(chapterId, 10);
-            if (isNaN(chapNum)) return;
-            
-            ApiService.getNovel(novelId).then(novelData => {
-              if (novelData) {
-                setNovel(novelData);
-                const currentChap = novelData.chapters.find(c => c.chapterNumber === chapNum);
-                setChapter(currentChap || null);
-                if (currentChap) {
-                  ApiService.getComments(currentChap.id).then(setComments);
+        const loadChapter = async () => {
+            if (novelId && chapterId) {
+                const chapNum = parseInt(chapterId, 10);
+                if (isNaN(chapNum)) return;
+                
+                try {
+                    const novelData = await ApiService.getNovel(novelId);
+                    if (novelData) {
+                        setNovel(novelData);
+                        const currentChap = novelData.chapters.find(c => c.chapterNumber === chapNum);
+                        setChapter(currentChap || null);
+                        if (currentChap) {
+                            const commentsData = await ApiService.getComments(currentChap.id);
+                            setComments(commentsData);
+                        }
+                    }
+                } catch (error) {
+                    console.error("Failed to load chapter data:", error);
+                    setNovel(null);
+                    setChapter(null);
                 }
-              }
-            });
-        }
+            }
+        };
+        loadChapter();
     }, [novelId, chapterId]);
     
     const toggleTheme = () => {
@@ -843,7 +861,6 @@ const App = () => {
       options: {
         data: {
           username,
-          email,
           role,
           pen_name: penName || '',
           bio: bio || '',

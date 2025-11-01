@@ -1,3 +1,4 @@
+
 export enum UserRole {
   USER = 'USER',
   AUTHOR = 'AUTHOR',
@@ -37,7 +38,6 @@ export interface Novel {
   tags: string[];
   status: NovelStatus;
   rating: number;
-  views: number;
   likes: number;
   language: string;
   chapters: Chapter[];
@@ -51,7 +51,6 @@ export interface Chapter {
   content: string;
   chapterNumber: number;
   isPublished: boolean;
-  views: number;
   likes: number;
   createdAt: Date;
 }

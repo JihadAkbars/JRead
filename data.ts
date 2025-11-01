@@ -155,6 +155,18 @@ export const ApiService = {
 
   async deleteNovel(novelId: string): Promise<{ success: boolean }> {
       const { error } = await supabase.from('novels').delete().eq('id', novelId);
+      if (error) {
+          console.error('Error deleting novel (RLS may apply):', error);
+      }
+      return { success: !error };
+  },
+
+  async adminDeleteNovel(novelId: string): Promise<{ success: boolean }> {
+      if (!supabase) return { success: false };
+      const { error } = await supabase.rpc('admin_delete_novel', { novel_id_to_delete: novelId });
+      if (error) {
+          console.error('Error deleting novel via admin RPC:', error);
+      }
       return { success: !error };
   },
 

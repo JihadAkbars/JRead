@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -1679,26 +1678,33 @@ const App = () => {
   
   const signup = async (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string): Promise<{ success: boolean; message: string; }> => {
     if (!supabase) return { success: false, message: 'Database client not initialized.' };
-    const { data, error } = await supabase.auth.signUp({ email, password: pass });
-    if (error) return { success: false, message: error.message };
-    if (data.user) {
-        // Now create a corresponding entry in our public 'profiles' table
-        const { error: profileError } = await supabase.from('profiles').insert({
-          id: data.user.id,
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        data: {
           username,
           email,
           role,
-          pen_name: penName,
-          bio,
+          pen_name: penName || '',
+          bio: bio || '',
           profile_picture: `https://picsum.photos/seed/newUser${Date.now()}/100/100`,
-        });
-        if (profileError) {
-            // In a real app, you might want to delete the auth user if profile creation fails
-            return { success: false, message: `Auth successful but profile creation failed: ${profileError.message}` };
         }
-        return { success: true, message: data.session ? 'Signup successful!' : 'Signup successful! Please check your email to verify.' };
+      }
+    });
+
+    if (error) {
+      return { success: false, message: error.message };
     }
-    return { success: false, message: 'An unknown error occurred.' };
+    
+    // With the database trigger, the profile is created automatically.
+    // We just need to check if the user object was returned (which implies success).
+    if (data.user) {
+        return { success: true, message: data.session ? 'Signup successful!' : 'Signup successful! Please check your email for a verification link.' };
+    }
+    
+    return { success: false, message: 'An unknown error occurred during sign up.' };
   };
 
   const updateUser = async (updatedData: Partial<User>, profilePicFile?: File) => {

@@ -329,8 +329,15 @@ export const ApiService = {
         return null;
     }
     
-    // Supabase returns related table as an object if it's a to-one relationship
-    const chapter = data.chapters as { chapter_number: number };
+    // FIX: Supabase's type inference can be incorrect for joined tables, sometimes returning an array for a to-one relationship.
+    // This code now handles both cases (object or array) to prevent type errors.
+    const chapterData = Array.isArray(data.chapters) ? data.chapters[0] : data.chapters;
+
+    if (!chapterData) {
+        return null;
+    }
+
+    const chapter = chapterData as { chapter_number: number };
 
     return {
         chapterId: data.chapter_id,

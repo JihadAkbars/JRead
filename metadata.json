@@ -1,0 +1,7 @@
+{
+  "name": "J Read",
+  "description": "An interactive website for reading and writing online novels, similar to Wattpad. The platform features different account types for readers and authors, a rich reading experience, and novel management tools for creators.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

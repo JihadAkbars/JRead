@@ -1047,11 +1047,13 @@ const AdminDashboard = () => {
     }, []);
     
     const handleDeleteUser = async (userId: string, username: string) => {
-        // This is a simplified client-side delete. In a real app, this should be a secure backend function.
-        if (window.confirm(`Are you sure you want to delete user "${username}"? This will also delete all their novels and chapters.`)) {
-            // Can't delete users from client-side with RLS for security.
-            // This would require an admin client or a server-side function.
-            alert("User deletion from client is disabled for security. Please manage users in the Supabase dashboard.");
+        if (window.confirm(`Are you sure you want to delete user "${username}"? This action is irreversible.`)) {
+            const { success } = await ApiService.adminDeleteUser(userId);
+            if (success) {
+                setUsers(prev => prev.filter(u => u.id !== userId));
+            } else {
+                alert(`Failed to delete user "${username}". Make sure the backend RPC function is set up correctly. Check the console for more details.`);
+            }
         }
     };
     
@@ -1061,7 +1063,7 @@ const AdminDashboard = () => {
             if (success) {
                 setNovels(prev => prev.filter(n => n.id !== novelId));
             } else {
-                alert(`Failed to delete novel "${title}". Check the console for more details.`);
+                alert(`Failed to delete novel "${title}". Make sure the backend RPC function is set up correctly. Check the console for more details.`);
             }
         }
     };

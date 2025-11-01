@@ -2216,7 +2216,6 @@ const AccountSettingsPage = () => {
     const [profilePicPreview, setProfilePicPreview] = useState<string | null>(user?.profilePicture || null);
     
     // State for privacy form
-    // FIX: Explicitly type useState with <boolean> to avoid incorrect type inference of literal types (`true`), and use nullish coalescing (`??`) for correct default value logic.
     const [bookmarksPublic, setBookmarksPublic] = useState<boolean>(user?.bookmarksArePublic ?? true);
     const [activityPublic, setActivityPublic] = useState<boolean>(user?.activityIsPublic ?? true);
 
@@ -2452,11 +2451,9 @@ const AppRouter = () => {
 // --- APP COMPONENT --- //
 const App = () => {
   const [user, setUser] = useState<User | null>(null);
-  // FIX: Explicitly type useState with <boolean> to prevent TypeScript from inferring a literal `false` type.
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  // FIX: Explicitly type useState with <boolean> to prevent TypeScript from inferring a literal `true` type.
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {

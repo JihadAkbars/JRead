@@ -1,3 +1,6 @@
+
+
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -445,22 +448,6 @@ const Header = () => {
     </header>
   );
 };
-
-// --- FOOTER COMPONENT --- //
-const Footer = () => {
-    return (
-        <footer className="bg-light-surface dark:bg-dark-surface border-t border-gray-200 dark:border-gray-700 mt-auto">
-            <div className="container mx-auto px-4 py-6 flex flex-col sm:flex-row justify-between items-center text-sm text-gray-500 dark:text-gray-400">
-                <p>&copy; {new Date().getFullYear()} J Read. All rights reserved.</p>
-                <div className="flex gap-4 mt-4 sm:mt-0">
-                    <Link to="/contact" className="hover:text-primary transition-colors">Contact</Link>
-                    <Link to="/changelog" className="hover:text-primary transition-colors">Changelog</Link>
-                </div>
-            </div>
-        </footer>
-    );
-};
-
 
 // --- PAGES --- //
 const HomePage = () => {
@@ -1655,8 +1642,8 @@ const CreateNovelModal = ({ isOpen, onClose, onNovelCreated }: { isOpen: boolean
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Cover Image</label>
                         <div className="mt-1 flex items-center gap-4 p-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md">
                             {coverImagePreview ? 
-                                <img src={coverImagePreview} alt="Cover preview" className="w-24 aspect-[512/800] object-cover rounded"/> :
-                                <div className="w-24 aspect-[512/800] bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm p-2 text-center">Preview</div>
+                                <img src={coverImagePreview} alt="Cover preview" className="w-24 h-40 object-cover rounded"/> :
+                                <div className="w-24 h-40 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
                             }
                              <Button type="button" variant="ghost" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2">
                                 <UploadIcon className="w-5 h-5"/>
@@ -1785,8 +1772,8 @@ const EditNovelModal = ({ novel, isOpen, onClose, onNovelUpdated }: { novel: Nov
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Cover Image</label>
                         <div className="mt-1 flex items-center gap-4 p-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md">
                             {coverImagePreview ? 
-                                <img src={coverImagePreview} alt="Cover preview" className="w-24 aspect-[512/800] object-cover rounded"/> :
-                                <div className="w-24 aspect-[512/800] bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm p-2 text-center">Preview</div>
+                                <img src={coverImagePreview} alt="Cover preview" className="w-24 h-40 object-cover rounded"/> :
+                                <div className="w-24 h-40 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center text-gray-400 text-sm">Preview</div>
                             }
                              <Button type="button" variant="ghost" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2">
                                 <UploadIcon className="w-5 h-5"/>
@@ -2232,6 +2219,7 @@ const AccountSettingsPage = () => {
     const [profilePicPreview, setProfilePicPreview] = useState<string | null>(user?.profilePicture || null);
     
     // State for privacy form
+    // FIX: Explicitly type useState with <boolean> to avoid incorrect type inference of literal types (`true`), and use nullish coalescing (`??`) for correct default value logic.
     const [bookmarksPublic, setBookmarksPublic] = useState<boolean>(user?.bookmarksArePublic ?? true);
     const [activityPublic, setActivityPublic] = useState<boolean>(user?.activityIsPublic ?? true);
 
@@ -2445,190 +2433,6 @@ const BookmarksPage = () => {
     );
 };
 
-const ContactPage = () => {
-    const { user } = useAuth();
-    const [name, setName] = useState(user?.username || '');
-    const [email, setEmail] = useState(user?.email || '');
-    const [subject, setSubject] = useState('General Feedback');
-    const [message, setMessage] = useState('');
-    const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!email || !message) {
-            setStatus('error');
-            return;
-        }
-        setStatus('submitting');
-        // Simulate an API call
-        setTimeout(() => {
-            setStatus('success');
-            setName(user?.username || '');
-            setEmail(user?.email || '');
-            setSubject('General Feedback');
-            setMessage('');
-        }, 1500);
-    };
-
-    return (
-        <div className="container mx-auto max-w-2xl px-4 py-8">
-            <h1 className="text-3xl font-bold text-center mb-4">Get in Touch</h1>
-            <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
-                Have a question, a bug report, or some feedback? We'd love to hear from you.
-            </p>
-            <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md p-8">
-                {status === 'success' ? (
-                     <div className="text-center py-8">
-                         <h2 className="text-2xl font-bold text-green-600 dark:text-green-400">Thank You!</h2>
-                         <p className="mt-2">Your message has been sent successfully.</p>
-                         <Button onClick={() => setStatus('idle')} className="mt-6">Send Another Message</Button>
-                    </div>
-                ) : (
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                             <div>
-                                <label htmlFor="name" className="block text-sm font-medium">Name</label>
-                                <Input id="name" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your Name" />
-                            </div>
-                             <div>
-                                <label htmlFor="email" className="block text-sm font-medium">Email <span className="text-red-500">*</span></label>
-                                <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" required />
-                            </div>
-                        </div>
-                        <div>
-                            <label htmlFor="subject" className="block text-sm font-medium">Subject <span className="text-red-500">*</span></label>
-                             <select id="subject" value={subject} onChange={e => setSubject(e.target.value)} className="w-full mt-1 px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
-                                <option>General Feedback</option>
-                                <option>Bug Report</option>
-                                <option>Feature Request</option>
-                                <option>Question</option>
-                            </select>
-                        </div>
-                         <div>
-                            <label htmlFor="message" className="block text-sm font-medium">Message <span className="text-red-500">*</span></label>
-                            <textarea id="message" value={message} onChange={e => setMessage(e.target.value)} rows={6} className="w-full mt-1 px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary" required />
-                        </div>
-                        {status === 'error' && <p className="text-red-500 text-sm">Please fill out all required fields.</p>}
-                        <div className="text-right">
-                             <Button type="submit" disabled={status === 'submitting'} className="min-w-[150px]">
-                                {status === 'submitting' ? 'Sending...' : 'Send Message'}
-                            </Button>
-                        </div>
-                    </form>
-                )}
-            </div>
-        </div>
-    );
-};
-
-const ChangelogPage = () => {
-    const changelogData = [
-        {
-            version: '1.2.0',
-            date: 'July 26, 2024',
-            changes: {
-                new: [
-                    "Added Contact and Changelog pages to the footer for better user communication.",
-                    "Implemented privacy settings for public bookmarks and activity.",
-                    "Users can now delete their own accounts from the settings page.",
-                ],
-                improvements: [
-                    "Updated cover image size recommendations to 512x800 pixels.",
-                    "Switched the default theme to dark mode for a more modern feel.",
-                ],
-                fixes: [
-                    "Resolved an issue where view counts were not displaying correctly (feature has been temporarily removed).",
-                    "Fixed a bug where the login modal would not close after a successful login.",
-                ]
-            }
-        },
-        {
-            version: '1.1.0',
-            date: 'July 15, 2024',
-            changes: {
-                new: [
-                    "Admin Dashboard: Admins can now manage users and novels directly.",
-                    "Author Dashboard: Authors can now create, edit, and manage their novels and chapters.",
-                    "Implemented user roles (USER, AUTHOR, ADMIN).",
-                    "Users can now take a profile picture using their device's camera.",
-                ],
-                improvements: [
-                    "Enhanced the reading page with font size controls and a chapter navigation menu.",
-                     "Improved search functionality with real-time suggestions.",
-                ]
-            }
-        },
-        {
-            version: '1.0.0',
-            date: 'July 1, 2024',
-            changes: {
-                new: [
-                    "Initial release of J Read!",
-                    "Core features include user authentication, novel browsing, and reading chapters.",
-                    "Users can bookmark, like, and rate novels.",
-                ]
-            }
-        }
-    ];
-
-    const Tag = ({ type }: { type: 'new' | 'improvements' | 'fixes' }) => {
-        const styles = {
-            new: { label: '✨ New Feature', classes: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
-            improvements: { label: '🔧 Improvement', classes: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
-            fixes: { label: '🐛 Bug Fix', classes: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
-        };
-        return <span className={`px-2 py-1 text-xs font-medium rounded-full ${styles[type].classes}`}>{styles[type].label}</span>
-    };
-
-    return (
-        <div className="container mx-auto max-w-3xl px-4 py-8">
-            <h1 className="text-3xl font-bold text-center mb-4">Changelog</h1>
-            <p className="text-center text-gray-600 dark:text-gray-400 mb-12">
-                Stay up to date with the latest features, improvements, and bug fixes on J Read.
-            </p>
-            <div className="space-y-12">
-                {changelogData.map(entry => (
-                    <div key={entry.version} className="relative pl-8 border-l-2 border-gray-300 dark:border-gray-700">
-                         <div className="absolute -left-4 top-0 w-8 h-8 bg-primary rounded-full border-4 border-light-bg dark:border-dark-bg flex items-center justify-center text-white font-bold text-sm">
-                            {entry.version.split('.')[0]}
-                        </div>
-                        <div className="mb-4">
-                            <h2 className="text-2xl font-bold">Version {entry.version}</h2>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">{entry.date}</p>
-                        </div>
-                        <div className="space-y-6">
-                            {entry.changes.new && (
-                                <div>
-                                    <Tag type="new" />
-                                    <ul className="mt-2 list-disc list-inside space-y-1 text-gray-700 dark:text-gray-300">
-                                        {entry.changes.new.map((item, i) => <li key={i}>{item}</li>)}
-                                    </ul>
-                                </div>
-                            )}
-                             {entry.changes.improvements && (
-                                <div>
-                                    <Tag type="improvements" />
-                                    <ul className="mt-2 list-disc list-inside space-y-1 text-gray-700 dark:text-gray-300">
-                                        {entry.changes.improvements.map((item, i) => <li key={i}>{item}</li>)}
-                                    </ul>
-                                </div>
-                            )}
-                             {entry.changes.fixes && (
-                                <div>
-                                    <Tag type="fixes" />
-                                    <ul className="mt-2 list-disc list-inside space-y-1 text-gray-700 dark:text-gray-300">
-                                        {entry.changes.fixes.map((item, i) => <li key={i}>{item}</li>)}
-                                    </ul>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
 
 const AppRouter = () => {
   return (
@@ -2643,8 +2447,6 @@ const AppRouter = () => {
       <Route path="/verified-email" element={<EmailVerifiedPage />} />
       <Route path="/settings" element={<AccountSettingsPage />} />
       <Route path="/bookmarks" element={<BookmarksPage />} />
-      <Route path="/contact" element={<ContactPage />} />
-      <Route path="/changelog" element={<ChangelogPage />} />
     </Routes>
   );
 };
@@ -2653,9 +2455,11 @@ const AppRouter = () => {
 // --- APP COMPONENT --- //
 const App = () => {
   const [user, setUser] = useState<User | null>(null);
+  // FIX: Explicitly type useState with <boolean> to prevent TypeScript from inferring a literal `false` type.
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  // FIX: Explicitly type useState with <boolean> to prevent TypeScript from inferring a literal `true` type.
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -2688,7 +2492,7 @@ const App = () => {
     });
 
     return () => {
-      subscription?.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -2816,7 +2620,6 @@ const App = () => {
             <main className="flex-grow">
               <AppRouter />
             </main>
-            <Footer />
           </div>
           <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
         </HashRouter>

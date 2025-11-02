@@ -1099,19 +1099,18 @@ const ChangelogPage = () => {
     }, []);
     
     const handleFormSubmit = async (data: Omit<ChangelogEntry, 'id' | 'created_at'>) => {
-        if (editingEntry) { // Editing existing entry
-            const updatedEntry = await ApiService.updateChangelog(editingEntry.id, data);
-            if (updatedEntry) {
-                setChangelogs(changelogs.map(c => c.id === updatedEntry.id ? updatedEntry : c));
-            }
-        } else { // Creating new entry
-            const newEntry = await ApiService.addChangelog(data);
-            if (newEntry) {
-                setChangelogs([newEntry, ...changelogs]);
-            }
-        }
+        const result = editingEntry
+            ? await ApiService.updateChangelog(editingEntry.id, data)
+            : await ApiService.addChangelog(data);
+
         setIsModalOpen(false);
         setEditingEntry(null);
+
+        if (result) {
+            await fetchChangelogs(); // Re-fetch data from server to guarantee consistency
+        } else {
+            alert('There was an error saving the changelog entry. Please try again.');
+        }
     };
 
     const openAddModal = () => {

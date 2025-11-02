@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>J Read</title>
+    <title>J Read (Still Development)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -23,6 +23,15 @@
             fontFamily: {
               sans: ['Inter', 'sans-serif'],
               serif: ['Lora', 'serif'],
+            },
+            keyframes: {
+              'fade-in': {
+                'from': { opacity: 0 },
+                'to': { opacity: 1 },
+              },
+            },
+            animation: {
+              'fade-in': 'fade-in 0.3s ease-out',
             },
           },
         },

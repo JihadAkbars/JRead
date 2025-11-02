@@ -547,6 +547,7 @@ const NovelDetailPage = () => {
     const [isBookmarked, setIsBookmarked] = useState(false);
     const [hasLiked, setHasLiked] = useState(false);
     const [userRating, setUserRating] = useState<number | null>(null);
+    const [bookmarkedChapter, setBookmarkedChapter] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -565,18 +566,21 @@ const NovelDetailPage = () => {
                 setNovel(novelData);
     
                 if (user) {
-                    const [bookmarkStatus, interactionStatus] = await Promise.all([
+                    const [bookmarkStatus, interactionStatus, readingProgress] = await Promise.all([
                         ApiService.isNovelBookmarked(user.id, novelData.id),
                         ApiService.getUserInteractionStatus(novelData.id, user.id),
+                        ApiService.getUserNovelProgress(user.id, novelData.id),
                     ]);
                     
                     setIsBookmarked(bookmarkStatus);
                     setHasLiked(interactionStatus.hasLiked);
                     setUserRating(interactionStatus.userRating);
+                    setBookmarkedChapter(readingProgress);
                 } else {
                     setIsBookmarked(false);
                     setHasLiked(false);
                     setUserRating(null);
+                    setBookmarkedChapter(null);
                 }
             } catch (error) {
                 console.error("Failed to load novel details:", error);
@@ -643,6 +647,9 @@ const NovelDetailPage = () => {
     if (!novel) return <div className="text-center py-10">Novel not found.</div>;
 
     const firstChapter = novel.chapters?.[0];
+    const continueChapterNumber = bookmarkedChapter;
+    const readTargetChapterNumber = continueChapterNumber || firstChapter?.chapterNumber;
+    const readButtonText = continueChapterNumber ? `Continue Reading (Ch. ${continueChapterNumber})` : 'Read First Chapter';
 
     return (
         <div className="container mx-auto px-4 py-8">
@@ -680,9 +687,9 @@ const NovelDetailPage = () => {
                         {novel.tags.map(tag => <span key={tag} className="bg-primary/20 text-primary px-3 py-1 text-sm rounded-full">#{tag}</span>)}
                     </div>
                     <div className="flex items-center gap-2">
-                        {firstChapter ? (
-                            <Link to={`/read/${novel.id}/${firstChapter.chapterNumber}`}>
-                                <Button className="w-full md:w-auto">Read First Chapter</Button>
+                        {readTargetChapterNumber ? (
+                            <Link to={`/read/${novel.id}/${readTargetChapterNumber}`}>
+                                <Button className="w-full md:w-auto">{readButtonText}</Button>
                             </Link>
                         ) : (
                              <Button className="w-full md:w-auto" disabled>No Chapters Available</Button>
@@ -724,11 +731,13 @@ const NovelDetailPage = () => {
 
 const ReaderPage = () => {
     const { novelId, chapterId } = useParams();
+    const { user, showAuthModal } = useAuth();
     const [chapter, setChapter] = useState<Chapter | null>(null);
     const [novel, setNovel] = useState<Novel | null>(null);
     const [comments, setComments] = useState<Comment[]>([]);
     const [isDarkMode, setIsDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
     const [fontSize, setFontSize] = useState(16);
+    const [bookmarkedChapter, setBookmarkedChapter] = useState<number | null>(null);
     const navigate = useNavigate();
     const currentChapterNumber = parseInt(chapterId || '1');
 
@@ -747,6 +756,13 @@ const ReaderPage = () => {
                         if (currentChap) {
                             const commentsData = await ApiService.getComments(currentChap.id);
                             setComments(commentsData);
+
+                            if (user) {
+                                const progress = await ApiService.getUserNovelProgress(user.id, novelId);
+                                setBookmarkedChapter(progress);
+                            } else {
+                                setBookmarkedChapter(null);
+                            }
                         }
                     }
                 } catch (error) {
@@ -757,7 +773,7 @@ const ReaderPage = () => {
             }
         };
         loadChapter();
-    }, [novelId, chapterId]);
+    }, [novelId, chapterId, user]);
     
     const toggleTheme = () => {
         setIsDarkMode(!isDarkMode);
@@ -774,7 +790,20 @@ const ReaderPage = () => {
         }
     }
 
+    const handleBookmark = async () => {
+        if (!user) {
+            showAuthModal();
+            return;
+        }
+        if (!novelId || !chapter) return;
+
+        setBookmarkedChapter(chapter.chapterNumber); // Optimistic update
+        await ApiService.setUserNovelProgress(user.id, novelId, chapter.chapterNumber);
+    };
+
     if (!chapter || !novel) return <div className="text-center py-10">Loading chapter...</div>;
+
+    const isCurrentChapterBookmarked = bookmarkedChapter === currentChapterNumber;
 
     return (
         <div className="min-h-screen bg-light-bg dark:bg-dark-bg text-light-text dark:text-dark-text">
@@ -785,6 +814,9 @@ const ReaderPage = () => {
                     <span className="truncate max-w-xs">{chapter.title}</span>
                 </div>
                 <div className="flex items-center gap-4">
+                    <button onClick={handleBookmark} title="Set as Reading Progress" className="text-gray-600 dark:text-gray-300 hover:text-primary dark:hover:text-primary">
+                        <BookmarkIcon className="w-6 h-6" filled={isCurrentChapterBookmarked} />
+                    </button>
                     <button onClick={() => changeFontSize(-2)} className="text-xs">A-</button>
                     <button onClick={() => changeFontSize(2)} className="text-xl">A+</button>
                     <button onClick={toggleTheme}>{isDarkMode ? <SunIcon className="w-5 h-5"/> : <MoonIcon className="w-5 h-5"/>}</button>

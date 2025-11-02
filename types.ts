@@ -74,3 +74,11 @@ export interface ChangelogEntry {
   changes: ChangelogChange[];
   createdAt?: Date;
 }
+
+export type NotificationType = 'success' | 'error' | 'info';
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  message: string;
+}

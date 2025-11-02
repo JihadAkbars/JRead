@@ -50,15 +50,51 @@ export const ApiService = {
     return toCamelCase(data);
   },
 
-  updateUser: async (id: string, updates: { role: UserRole }): Promise<User | null> => {
+  updateUserRole: async (id: string, updates: { role: UserRole }): Promise<User | null> => {
     if (!supabase) return null;
     const { data, error } = await supabase.from('profiles').update({ role: updates.role }).eq('id', id).select().single();
     if (error) {
-      console.error('Error updating user:', error);
+      console.error('Error updating user role:', error);
       return null;
     }
     return toCamelCase(data);
   },
+
+  updateUserProfile: async (id: string, updates: Partial<User>): Promise<User | null> => {
+    if (!supabase) return null;
+    const updateData: { [key: string]: any } = {};
+    if (updates.penName !== undefined) updateData.pen_name = updates.penName;
+    if (updates.bio !== undefined) updateData.bio = updates.bio;
+    if (updates.profilePicture !== undefined) updateData.profile_picture = updates.profilePicture;
+    if (updates.showBookmarks !== undefined) updateData.show_bookmarks = updates.showBookmarks;
+    if (updates.showLikes !== undefined) updateData.show_likes = updates.showLikes;
+
+    if(Object.keys(updateData).length === 0) {
+      // If there are no updates to send, just fetch the current user data to return
+      const { data } = await supabase.from('profiles').select('*').eq('id', id).single();
+      return toCamelCase(data);
+    }
+
+    const { data, error } = await supabase.from('profiles').update(updateData).eq('id', id).select().single();
+    if (error) {
+      console.error('Error updating user profile:', error);
+      return null;
+    }
+    return toCamelCase(data);
+  },
+
+  deleteUserAccount: async (): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    // This assumes an RPC function 'delete_user_account' exists in Supabase
+    // which handles deleting the user from auth.users and all related data.
+    const { error } = await supabase.rpc('delete_user_account');
+    if (error) {
+        console.error('Error deleting user account:', error);
+    }
+    return { success: !error };
+  },
+
+  uploadProfilePicture: (file: File) => uploadFile('profile_pictures', file),
 
   // --- NOVEL METHODS ---
   getNovels: async (): Promise<Novel[]> => {
@@ -215,6 +251,46 @@ export const ApiService = {
   },
 
   // --- INTERACTION METHODS ---
+  getBookmarkedNovels: async (userId: string): Promise<Novel[]> => {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from('user_novel_bookmarks')
+      .select('novels(*, author:profiles!author_id(username, pen_name))')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching bookmarked novels:', error);
+      return [];
+    }
+    const mappedData = data.map((item: any) => ({
+        ...(item.novels || {}),
+        authorName: item.novels?.author ? (item.novels.author.pen_name || item.novels.author.username) : 'Unknown Author',
+        author: undefined,
+    }));
+    return toCamelCase(mappedData.filter(n => n.id));
+  },
+
+  getLikedNovels: async (userId: string): Promise<Novel[]> => {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from('user_novel_interactions')
+      .select('novels(*, author:profiles!author_id(username, pen_name))')
+      .eq('user_id', userId)
+      .eq('has_liked', true);
+
+    if (error) {
+      console.error('Error fetching liked novels:', error);
+      return [];
+    }
+    const mappedData = data.map((item: any) => ({
+        ...(item.novels || {}),
+        authorName: item.novels?.author ? (item.novels.author.pen_name || item.novels.author.username) : 'Unknown Author',
+        author: undefined,
+    }));
+    return toCamelCase(mappedData.filter(n => n.id));
+  },
+
   isNovelBookmarked: async (userId: string, novelId: string): Promise<boolean> => {
     if (!supabase) return false;
     const { data, error } = await supabase.from('user_novel_bookmarks').select('novel_id').eq('user_id', userId).eq('novel_id', novelId).maybeSingle();

@@ -286,9 +286,14 @@ export const ApiService = {
     return toCamelCase(data);
   },
 
-  addChangelog: async (entryData: Omit<ChangelogEntry, 'id' | 'created_at'>): Promise<ChangelogEntry | null> => {
+  addChangelog: async (entryData: Omit<ChangelogEntry, 'id' | 'createdAt'>): Promise<ChangelogEntry | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase.from('changelogs').insert(entryData).select().single();
+    const payload = {
+      version: entryData.version,
+      date: entryData.date,
+      changes: entryData.changes,
+    };
+    const { data, error } = await supabase.from('changelogs').insert(payload).select().single();
      if (error) {
         console.error('Error adding changelog:', error);
         return null;
@@ -298,7 +303,13 @@ export const ApiService = {
 
   updateChangelog: async (id: string, updates: Partial<ChangelogEntry>): Promise<ChangelogEntry | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase.from('changelogs').update(updates).eq('id', id).select().single();
+    
+    const payload: { [key: string]: any } = {};
+    if (updates.version !== undefined) payload.version = updates.version;
+    if (updates.date !== undefined) payload.date = updates.date;
+    if (updates.changes !== undefined) payload.changes = updates.changes;
+
+    const { data, error } = await supabase.from('changelogs').update(payload).eq('id', id).select().single();
     if (error) {
       console.error('Error updating changelog:', error);
       return null;

@@ -301,12 +301,14 @@ export const ApiService = {
   addBookmark: async (userId: string, novelId: string): Promise<{ success: boolean }> => {
     if (!supabase) return { success: false };
     const { error } = await supabase.from('user_novel_bookmarks').insert({ user_id: userId, novel_id: novelId });
+    if (error) console.error('Error adding bookmark:', error);
     return { success: !error };
   },
   
   removeBookmark: async (userId: string, novelId: string): Promise<{ success: boolean }> => {
     if (!supabase) return { success: false };
     const { error } = await supabase.from('user_novel_bookmarks').delete().match({ user_id: userId, novel_id: novelId });
+    if (error) console.error('Error removing bookmark:', error);
     return { success: !error };
   },
   
@@ -319,19 +321,22 @@ export const ApiService = {
 
   likeNovel: async (userId: string, novelId: string): Promise<{ success: boolean }> => {
     if (!supabase) return { success: false };
-    const { error } = await supabase.rpc('toggle_like', { p_user_id: userId, p_novel_id: novelId, p_like_status: true });
+    const { error } = await supabase.rpc('toggle_like', { user_id: userId, novel_id: novelId, like_status: true });
+    if (error) console.error('Error liking novel:', error);
     return { success: !error };
   },
 
   unlikeNovel: async (userId: string, novelId: string): Promise<{ success: boolean }> => {
     if (!supabase) return { success: false };
-    const { error } = await supabase.rpc('toggle_like', { p_user_id: userId, p_novel_id: novelId, p_like_status: false });
+    const { error } = await supabase.rpc('toggle_like', { user_id: userId, novel_id: novelId, like_status: false });
+    if (error) console.error('Error unliking novel:', error);
     return { success: !error };
   },
 
   submitRating: async (novelId: string, userId: string, rating: number): Promise<{ success: boolean }> => {
     if (!supabase) return { success: false };
-    const { error } = await supabase.rpc('submit_rating', { p_user_id: userId, p_novel_id: novelId, p_rating: rating });
+    const { error } = await supabase.rpc('submit_rating', { user_id: userId, novel_id: novelId, rating: rating });
+    if (error) console.error('Error submitting rating:', error);
     return { success: !error };
   },
 

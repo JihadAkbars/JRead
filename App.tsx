@@ -4,7 +4,7 @@ import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
 import { User, UserRole, Novel, Chapter, Comment, ChangelogEntry, ChangelogChange, ChangelogChangeType } from './types';
 import { ApiService } from './data';
 import { GENRES } from './constants';
-import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon, PlusIcon, PencilIcon, TrashIcon } from './components/Icons';
+import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon, PlusIcon, PencilIcon, TrashIcon, BoldIcon, ItalicIcon, UnderlineIcon } from './components/Icons';
 
 // --- AUTH CONTEXT --- //
 interface AuthContextType {
@@ -99,7 +99,15 @@ const Button = ({ children, className = '', variant = 'primary', type = 'button'
 };
 
 const Input = (props: ComponentPropsWithoutRef<'input'>) => <input {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
-const TextArea = (props: ComponentPropsWithoutRef<'textarea'>) => <textarea {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
+const TextArea = React.forwardRef<HTMLTextAreaElement, ComponentPropsWithoutRef<'textarea'>>(
+  (props, ref) => (
+    <textarea 
+      ref={ref}
+      {...props} 
+      className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text placeholder:text-gray-500 dark:placeholder:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} 
+    />
+  )
+);
 const Select = (props: ComponentPropsWithoutRef<'select'>) => <select {...props} className={`w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 text-light-text dark:text-dark-text border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${props.className || ''}`} />;
 
 
@@ -825,9 +833,10 @@ const ReaderPage = () => {
             
             <main className="max-w-3xl mx-auto px-4 py-24" style={{ fontSize: `${fontSize}px` }}>
                 <h1 className="text-3xl font-bold mb-8 font-serif">{chapter.title}</h1>
-                <div className="prose dark:prose-invert max-w-none font-serif leading-loose whitespace-pre-line">
-                    {chapter.content}
-                </div>
+                <div 
+                    className="prose dark:prose-invert max-w-none font-serif leading-loose whitespace-pre-line"
+                    dangerouslySetInnerHTML={{ __html: chapter.content }}
+                />
             </main>
 
             <div className="fixed bottom-0 left-0 right-0 bg-light-surface dark:bg-dark-surface shadow-inner p-2 px-4 flex justify-between items-center">
@@ -1580,6 +1589,7 @@ const EditChapterPage = () => {
     const [saveStatus, setSaveStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
     const [isSubmittingManual, setIsSubmittingManual] = useState(false);
     const autoSaveTimeoutRef = useRef<number | null>(null);
+    const contentRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
         setIsEditMode(!!chapterIdFromParams);
@@ -1692,6 +1702,40 @@ const EditChapterPage = () => {
             setIsSubmittingManual(false);
         }
     };
+
+    const applyFormat = (format: 'bold' | 'italic' | 'underline') => {
+        const textarea = contentRef.current;
+        if (!textarea) return;
+
+        textarea.focus();
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const selectedText = textarea.value.substring(start, end);
+
+        if (!selectedText) return;
+
+        const tagMap = {
+            bold: 'strong',
+            italic: 'em',
+            underline: 'u',
+        };
+        const tag = tagMap[format];
+        
+        const replacement = `<${tag}>${selectedText}</${tag}>`;
+        
+        const newContent = textarea.value.substring(0, start) + replacement + textarea.value.substring(end);
+        
+        setContent(newContent);
+        setSaveStatus('dirty');
+
+        requestAnimationFrame(() => {
+            if(contentRef.current){
+                contentRef.current.focus();
+                contentRef.current.setSelectionRange(start, start + replacement.length);
+            }
+        });
+    };
     
     if (isLoading) return <div className="text-center py-10">Loading...</div>;
 
@@ -1730,7 +1774,27 @@ const EditChapterPage = () => {
                     </div>
                     <div>
                         <label htmlFor="chapter-content" className="block text-sm font-medium mb-1">Content</label>
-                        <TextArea id="chapter-content" rows={20} value={content} onChange={handleContentChange} required className="font-serif"/>
+                        <div className="flex items-center gap-1 p-2 bg-gray-100 dark:bg-gray-800 rounded-t-md border border-gray-300 dark:border-gray-600 border-b-0">
+                            <button type="button" onClick={() => applyFormat('bold')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Bold">
+                                <BoldIcon className="w-5 h-5"/>
+                            </button>
+                            <button type="button" onClick={() => applyFormat('italic')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Italic">
+                                <ItalicIcon className="w-5 h-5"/>
+                            </button>
+                            <button type="button" onClick={() => applyFormat('underline')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Underline">
+                                <UnderlineIcon className="w-5 h-5"/>
+                            </button>
+                        </div>
+
+                        <TextArea 
+                            id="chapter-content" 
+                            rows={20} 
+                            value={content} 
+                            onChange={handleContentChange} 
+                            required 
+                            className="font-serif !rounded-t-none"
+                            ref={contentRef}
+                        />
                     </div>
                     <div className="flex justify-end items-center gap-4">
                         <SaveStatusIndicator />

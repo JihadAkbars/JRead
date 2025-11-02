@@ -40,6 +40,7 @@ export const useNovels = () => {
     return context;
 };
 
+// FIX: Moved NovelsProvider outside of App component to prevent re-rendering issues and fix context bugs.
 const NovelsProvider = ({ children }: { children: ReactNode }) => {
     const [novels, setNovels] = useState<Novel[]>([]);
     const [loading, setLoading] = useState(true);
@@ -76,7 +77,6 @@ const NovelsProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const value = { novels, loading, updateNovelInList, addNovelToList, removeNovelFromList };
-
 
     return <NovelsContext.Provider value={value}>{children}</NovelsContext.Provider>;
 }
@@ -1006,8 +1006,7 @@ const ChangelogFormModal = ({ isOpen, onClose, onSubmit, initialData }: {
         setChanges(changes.filter((_, i) => i !== index));
     };
     
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleTriggerSubmit = () => {
         const validChanges = changes.filter(c => c.text.trim() !== '');
         if (version && date && validChanges.length > 0) {
             onSubmit({ version, date, changes: validChanges });
@@ -1016,10 +1015,16 @@ const ChangelogFormModal = ({ isOpen, onClose, onSubmit, initialData }: {
         }
     };
 
+    const handleFormSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        handleTriggerSubmit();
+    };
+
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} size="xl">
             <h2 className="text-2xl font-bold mb-6">{initialData ? 'Edit Entry' : 'Add New Entry'}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleFormSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label htmlFor="version" className="block text-sm font-medium mb-1">Version</label>
@@ -1051,7 +1056,7 @@ const ChangelogFormModal = ({ isOpen, onClose, onSubmit, initialData }: {
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-                    <Button type="submit">{initialData ? 'Save Changes' : 'Create Entry'}</Button>
+                    <Button type="button" onClick={handleTriggerSubmit}>{initialData ? 'Save Changes' : 'Create Entry'}</Button>
                 </div>
             </form>
         </Modal>

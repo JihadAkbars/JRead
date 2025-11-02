@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { User, Novel, Chapter, Comment, ChangelogEntry } from './types';
+import { User, Novel, Chapter, Comment, ChangelogEntry, ChangelogChange, UserRole } from './types';
 
 // Helper to convert snake_case from Supabase to camelCase for the app
 const toCamelCase = (obj: any): any => {
@@ -28,116 +28,157 @@ const uploadFile = async (bucket: 'cover_images' | 'profile_pictures', file: Fil
     return data.publicUrl;
 };
 
-// --- DATA SERVICE --- //
-
 export const ApiService = {
-  // --- USER/PROFILE METHODS --- //
-  async getUsers(): Promise<User[]> {
-    if (!supabase) return [];
-    const { data, error } = await supabase.from('profiles').select('*');
-    if (error) throw error;
-    return toCamelCase(data) as User[];
-  },
-
-  async getUser(id: string): Promise<User | null> {
+  // --- USER METHODS ---
+  getUser: async (id: string): Promise<User | null> => {
     if (!supabase) return null;
     const { data, error } = await supabase.from('profiles').select('*').eq('id', id).single();
     if (error) {
-        console.error('Error fetching user profile:', error);
-        return null;
+      console.error('Error fetching user:', error);
+      return null;
     }
-    return toCamelCase(data) as User;
+    return toCamelCase(data);
   },
 
-  async updateUser(id: string, updatedData: Partial<User>): Promise<User | null> {
-    if (!supabase) return null;
-    const { username, profilePicture, penName, bio, role } = updatedData;
-    const { data, error } = await supabase.from('profiles').update({ 
-        username,
-        profile_picture: profilePicture,
-        pen_name: penName,
-        bio,
-        role
-    }).eq('id', id).select().single();
-    if (error) throw error;
-    return toCamelCase(data) as User;
-  },
-
-  // --- NOVEL METHODS --- //
-  async getNovels(): Promise<Novel[]> {
+  getUsers: async (): Promise<User[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('novels').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
-    return (toCamelCase(data) as Novel[]).map(n => ({...n, chapters: []})); // chapters fetched separately
-  },
-
-  async getNovel(id: string): Promise<Novel | undefined> {
-    if (!supabase) return undefined;
-    const { data, error } = await supabase.from('novels').select('*, chapters(*)').eq('id', id).single();
-    if (error) throw error;
-    if (!data) return undefined;
-    
-    const novel = toCamelCase(data) as Novel;
-    // ensure chapters are sorted
-    if(novel.chapters) {
-        novel.chapters.sort((a, b) => a.chapterNumber - b.chapterNumber);
+    const { data, error } = await supabase.from('profiles').select('*').order('username');
+    if (error) {
+      console.error('Error fetching users:', error);
+      return [];
     }
-    return novel;
+    return toCamelCase(data);
   },
 
-  async getNovelsByAuthor(authorId: string): Promise<Novel[]> {
+  updateUser: async (id: string, updates: { role: UserRole }): Promise<User | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('profiles').update({ role: updates.role }).eq('id', id).select().single();
+    if (error) {
+      console.error('Error updating user:', error);
+      return null;
+    }
+    return toCamelCase(data);
+  },
+
+  // --- NOVEL METHODS ---
+  getNovels: async (): Promise<Novel[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('novels').select('*').eq('author_id', authorId).order('created_at', { ascending: false });
-    if (error) throw error;
-    return (toCamelCase(data) as Novel[]).map(n => ({...n, chapters: []})); // chapters fetched separately
+    const { data, error } = await supabase
+      .from('novels')
+      .select('*, author:profiles!author_id(username, pen_name)')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching novels:', error.message, error);
+      return [];
+    }
+
+    const mappedData = data.map((n: any) => ({
+      ...n,
+      authorName: n.author ? (n.author.pen_name || n.author.username) : 'Unknown Author',
+      chapters: [], // Chapters not needed for list view
+      author: undefined,
+    }));
+
+    return toCamelCase(mappedData);
   },
 
-  async addNovel(novelData: Omit<Novel, 'id' | 'authorName' | 'rating' | 'likes' | 'chapters' | 'createdAt'>): Promise<Novel | null> {
+  getNovel: async (id: string): Promise<Novel | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase.from('novels').insert({
-        title: novelData.title,
-        author_id: novelData.authorId,
-        cover_image: novelData.coverImage,
-        synopsis: novelData.synopsis,
-        genre: novelData.genre,
-        tags: novelData.tags,
-        status: novelData.status,
-        language: novelData.language,
-    }).select().single();
-    if (error) throw error;
-    return toCamelCase(data) as Novel;
-  },
+    const { data, error } = await supabase
+      .from('novels')
+      .select('*, chapters(*), author:profiles!author_id(username, pen_name)')
+      .eq('id', id)
+      .order('chapter_number', { referencedTable: 'chapters', ascending: true })
+      .single();
 
-  async updateNovel(id: string, updates: Partial<Omit<Novel, 'id' | 'authorId'>>): Promise<Novel | null> {
-    if (!supabase) return null;
-    const dbUpdates: any = {};
-    if (updates.title) dbUpdates.title = updates.title;
-    if (updates.coverImage) dbUpdates.cover_image = updates.coverImage;
-    if (updates.synopsis) dbUpdates.synopsis = updates.synopsis;
-    if (updates.genre) dbUpdates.genre = updates.genre;
-    if (updates.tags) dbUpdates.tags = updates.tags;
-    if (updates.status) dbUpdates.status = updates.status;
-    
-    const { data, error } = await supabase.from('novels').update(dbUpdates).eq('id', id).select().single();
-    if (error) throw error;
-    return toCamelCase(data) as Novel;
-  },
+    if (error) {
+      console.error('Error fetching novel:', error.message, error);
+      return null;
+    }
 
-  async deleteNovel(id: string): Promise<{ success: boolean }> {
-    if (!supabase) return { success: false };
-    const { error } = await supabase.from('novels').delete().eq('id', id);
-    return { success: !error };
-  },
+    const mappedData = {
+      ...data,
+      authorName: data.author ? (data.author.pen_name || data.author.username) : 'Unknown Author',
+      author: undefined,
+    };
 
-  // --- CHAPTER METHODS --- //
-  async getChapterById(id: string): Promise<Chapter | undefined> {
-    if (!supabase) return undefined;
-    const { data, error } = await supabase.from('chapters').select('*').eq('id', id).single();
-    if (error) return undefined;
-    return toCamelCase(data) as Chapter;
+    return toCamelCase(mappedData);
   },
   
-  async addChapter(chapterData: Omit<Chapter, 'id' | 'likes' | 'createdAt'>): Promise<Chapter | null> {
+  getNovelsByAuthor: async (authorId: string): Promise<Novel[]> => {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from('novels')
+      .select('*, author:profiles!author_id(username, pen_name)')
+      .eq('author_id', authorId)
+      .order('created_at', { ascending: false });
+
+     if (error) {
+      console.error('Error fetching novels by author:', error.message, error);
+      return [];
+    }
+
+    const mappedData = data.map((n: any) => ({
+      ...n,
+      authorName: n.author ? (n.author.pen_name || n.author.username) : 'Unknown Author',
+      chapters: [], // Chapters not needed for list view
+      author: undefined,
+    }));
+    
+    return toCamelCase(mappedData);
+  },
+
+  addNovel: async (novelData: Partial<Novel>): Promise<Novel | null> => {
+      if (!supabase) return null;
+      const { data, error } = await supabase.from('novels').insert({
+          title: novelData.title,
+          author_id: novelData.authorId,
+          cover_image: novelData.coverImage,
+          synopsis: novelData.synopsis,
+          genre: novelData.genre,
+          tags: novelData.tags,
+          status: novelData.status,
+          language: novelData.language,
+      }).select().single();
+
+      if (error) {
+          console.error('Error adding novel:', error);
+          return null;
+      }
+      return toCamelCase(data);
+  },
+
+  updateNovel: async (id: string, updates: Partial<Novel>): Promise<Novel | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from('novels').update({
+        title: updates.title,
+        synopsis: updates.synopsis,
+        genre: updates.genre,
+        tags: updates.tags,
+        status: updates.status,
+        cover_image: updates.coverImage,
+    }).eq('id', id).select().single();
+     if (error) {
+        console.error('Error updating novel:', error);
+        return null;
+    }
+    return toCamelCase(data);
+  },
+
+  deleteNovel: async (id: string): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.from('novels').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting novel:', error);
+    }
+    return { success: !error };
+  },
+  
+  uploadCoverImage: (file: File) => uploadFile('cover_images', file),
+
+  // --- CHAPTER METHODS ---
+  addChapter: async (chapterData: Partial<Chapter>): Promise<Chapter | null> => {
     if (!supabase) return null;
     const { data, error } = await supabase.from('chapters').insert({
         novel_id: chapterData.novelId,
@@ -146,119 +187,128 @@ export const ApiService = {
         chapter_number: chapterData.chapterNumber,
         is_published: chapterData.isPublished,
     }).select().single();
-    if (error) throw error;
-    return toCamelCase(data) as Chapter;
+     if (error) {
+        console.error('Error adding chapter:', error);
+        return null;
+    }
+    return toCamelCase(data);
   },
-
-  async updateChapter(id: string, updates: Partial<Omit<Chapter, 'id' | 'novelId'>>): Promise<Chapter | null> {
+  
+  updateChapter: async (id: string, updates: Partial<Chapter>): Promise<Chapter | null> => {
     if (!supabase) return null;
-    const dbUpdates: any = {};
-    if (updates.title) dbUpdates.title = updates.title;
-    if (updates.content) dbUpdates.content = updates.content;
-    if (updates.isPublished !== undefined) dbUpdates.is_published = updates.isPublished;
-    if (updates.chapterNumber) dbUpdates.chapter_number = updates.chapterNumber;
-    
-    const { data, error } = await supabase.from('chapters').update(dbUpdates).eq('id', id).select().single();
-    if (error) throw error;
-    return toCamelCase(data) as Chapter;
+    const { data, error } = await supabase.from('chapters').update({
+      title: updates.title,
+      content: updates.content,
+      is_published: updates.isPublished,
+    }).eq('id', id).select().single();
+     if (error) {
+        console.error('Error updating chapter:', error);
+        return null;
+    }
+    return toCamelCase(data);
   },
   
-  async deleteChapter(id: string): Promise<{ success: boolean }> {
-      if (!supabase) return { success: false };
-      const { error } = await supabase.from('chapters').delete().eq('id', id);
-      return { success: !error };
+  deleteChapter: async (id: string): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.from('chapters').delete().eq('id', id);
+    return { success: !error };
   },
 
-  // --- COMMENT METHODS --- //
-  async getComments(chapterId: string): Promise<Comment[]> {
-    // This is a placeholder as comments table is not in the schema yet.
-    return Promise.resolve([]);
+  // --- INTERACTION METHODS ---
+  isNovelBookmarked: async (userId: string, novelId: string): Promise<boolean> => {
+    if (!supabase) return false;
+    const { data, error } = await supabase.from('user_novel_bookmarks').select('novel_id').eq('user_id', userId).eq('novel_id', novelId).maybeSingle();
+    if (error) console.error('Error checking bookmark:', error);
+    return !!data;
+  },
+
+  addBookmark: async (userId: string, novelId: string): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.from('user_novel_bookmarks').insert({ user_id: userId, novel_id: novelId });
+    return { success: !error };
   },
   
-  // --- BOOKMARK METHODS --- //
-  async isNovelBookmarked(userId: string, novelId: string): Promise<boolean> {
-      if (!supabase) return false;
-      const { data, error } = await supabase.from('bookmarks').select('id').eq('user_id', userId).eq('novel_id', novelId).single();
-      return !!data && !error;
+  removeBookmark: async (userId: string, novelId: string): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.from('user_novel_bookmarks').delete().match({ user_id: userId, novel_id: novelId });
+    return { success: !error };
+  },
+  
+  getUserInteractionStatus: async (novelId: string, userId: string): Promise<{ hasLiked: boolean; userRating: number | null }> => {
+    if (!supabase) return { hasLiked: false, userRating: null };
+    const { data, error } = await supabase.from('user_novel_interactions').select('has_liked, rating').eq('novel_id', novelId).eq('user_id', userId).maybeSingle();
+    if (error) console.error('Error fetching interactions:', error);
+    return { hasLiked: data?.has_liked || false, userRating: data?.rating || null };
   },
 
-  async addBookmark(userId: string, novelId: string): Promise<{ success: boolean }> {
-      if (!supabase) return { success: false };
-      const { error } = await supabase.from('bookmarks').insert({ user_id: userId, novel_id: novelId });
-      return { success: !error };
+  likeNovel: async (userId: string, novelId: string): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.rpc('toggle_like', { p_user_id: userId, p_novel_id: novelId, p_like_status: true });
+    return { success: !error };
   },
 
-  async removeBookmark(userId: string, novelId: string): Promise<{ success: boolean }> {
-      if (!supabase) return { success: false };
-      const { error } = await supabase.from('bookmarks').delete().eq('user_id', userId).eq('novel_id', novelId);
-      return { success: !error };
+  unlikeNovel: async (userId: string, novelId: string): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.rpc('toggle_like', { p_user_id: userId, p_novel_id: novelId, p_like_status: false });
+    return { success: !error };
   },
 
-  // --- ACTIVITY & INTERACTION METHODS --- //
-
-  async getUserInteractionStatus(novelId: string, userId: string): Promise<{ hasLiked: boolean, userRating: number | null }> {
-      if (!supabase) return { hasLiked: false, userRating: null };
-      const [likeRes, ratingRes] = await Promise.all([
-          supabase.from('likes').select('id').eq('user_id', userId).eq('novel_id', novelId).single(),
-          supabase.from('ratings').select('rating').eq('user_id', userId).eq('novel_id', novelId).single()
-      ]);
-
-      return {
-          hasLiked: !!likeRes.data && !likeRes.error,
-          userRating: ratingRes.data?.rating || null
-      };
+  submitRating: async (novelId: string, userId: string, rating: number): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    const { error } = await supabase.rpc('submit_rating', { p_user_id: userId, p_novel_id: novelId, p_rating: rating });
+    return { success: !error };
   },
 
-  async likeNovel(userId: string, novelId: string): Promise<{ success: boolean }> {
-      if (!supabase) return { success: false };
-      const { error } = await supabase.from('likes').insert({ user_id: userId, novel_id: novelId });
-      return { success: !error };
-  },
-
-  async unlikeNovel(userId: string, novelId: string): Promise<{ success: boolean }> {
-      if (!supabase) return { success: false };
-      const { error } = await supabase.from('likes').delete().eq('user_id', userId).eq('novel_id', novelId);
-      return { success: !error };
-  },
-
-  async submitRating(novelId: string, userId: string, rating: number): Promise<{ success: boolean }> {
-      if (!supabase) return { success: false };
-      const { error } = await supabase.from('ratings').upsert(
-          { user_id: userId, novel_id: novelId, rating: rating, updated_at: new Date().toISOString() }, 
-          { onConflict: 'user_id, novel_id' }
-      );
-      return { success: !error };
-  },
-
-  // --- CHANGELOG METHODS --- //
-  async getChangelogs(): Promise<ChangelogEntry[]> {
+  // --- COMMENT METHODS ---
+  getComments: async (chapterId: string): Promise<Comment[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('changelogs').select('*').order('date', { ascending: false });
-    if (error) throw error;
-    return toCamelCase(data) as ChangelogEntry[];
+    // This is a simplified fetch; a real implementation would handle nested replies.
+    const { data, error } = await supabase.from('comments').select('*, user:profiles(username, profile_picture)').eq('chapter_id', chapterId).is('parent_id', null).order('created_at', { ascending: true });
+     if (error) {
+      console.error('Error fetching comments:', error);
+      return [];
+    }
+    return toCamelCase(data);
+  },
+  
+  // --- CHANGELOG METHODS ---
+  getChangelogs: async (): Promise<ChangelogEntry[]> => {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from('changelogs')
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching changelogs:', error);
+      return [];
+    }
+    return toCamelCase(data);
   },
 
-  async addChangelog(entry: Omit<ChangelogEntry, 'id' | 'created_at'>): Promise<ChangelogEntry | null> {
+  addChangelog: async (entryData: Omit<ChangelogEntry, 'id' | 'created_at'>): Promise<ChangelogEntry | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase.from('changelogs').insert(entry).select().single();
-    if (error) throw error;
-    return toCamelCase(data) as ChangelogEntry;
+    const { data, error } = await supabase.from('changelogs').insert(entryData).select().single();
+     if (error) {
+        console.error('Error adding changelog:', error);
+        return null;
+    }
+    return toCamelCase(data);
   },
 
-  async updateChangelog(id: string, updates: Partial<Omit<ChangelogEntry, 'id' | 'created_at'>>): Promise<ChangelogEntry | null> {
+  updateChangelog: async (id: string, updates: Partial<ChangelogEntry>): Promise<ChangelogEntry | null> => {
     if (!supabase) return null;
     const { data, error } = await supabase.from('changelogs').update(updates).eq('id', id).select().single();
-    if (error) throw error;
-    return toCamelCase(data) as ChangelogEntry;
+    if (error) {
+      console.error('Error updating changelog:', error);
+      return null;
+    }
+    return toCamelCase(data);
   },
 
-  async deleteChangelog(id: string): Promise<{ success: boolean }> {
+  deleteChangelog: async (id: string): Promise<{ success: boolean }> => {
     if (!supabase) return { success: false };
     const { error } = await supabase.from('changelogs').delete().eq('id', id);
     return { success: !error };
   },
-
-  // --- UPLOAD METHOD EXPORT --- //
-  uploadProfilePicture: (file: File) => uploadFile('profile_pictures', file),
-  uploadCoverImage: (file: File) => uploadFile('cover_images', file),
 };

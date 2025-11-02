@@ -1585,6 +1585,7 @@ const EditChapterPage = () => {
     const [content, setContent] = useState('');
     const [novel, setNovel] = useState<Novel | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write');
 
     const [saveStatus, setSaveStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
     const [isSubmittingManual, setIsSubmittingManual] = useState(false);
@@ -1760,6 +1761,20 @@ const EditChapterPage = () => {
         setContent(e.target.value);
     };
 
+    const TabButton = ({ isActive, onClick, children }: { isActive: boolean, onClick: () => void, children: ReactNode }) => (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                isActive
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+        >
+            {children}
+        </button>
+    );
+
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="max-w-3xl mx-auto">
@@ -1774,27 +1789,45 @@ const EditChapterPage = () => {
                     </div>
                     <div>
                         <label htmlFor="chapter-content" className="block text-sm font-medium mb-1">Content</label>
-                        <div className="flex items-center gap-1 p-2 bg-gray-100 dark:bg-gray-800 rounded-t-md border border-gray-300 dark:border-gray-600 border-b-0">
-                            <button type="button" onClick={() => applyFormat('bold')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Bold">
-                                <BoldIcon className="w-5 h-5"/>
-                            </button>
-                            <button type="button" onClick={() => applyFormat('italic')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Italic">
-                                <ItalicIcon className="w-5 h-5"/>
-                            </button>
-                            <button type="button" onClick={() => applyFormat('underline')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Underline">
-                                <UnderlineIcon className="w-5 h-5"/>
-                            </button>
+                        
+                        <div className="border border-gray-300 dark:border-gray-600 rounded-md">
+                             <div className="flex border-b border-gray-300 dark:border-gray-600">
+                                <TabButton isActive={activeTab === 'write'} onClick={() => setActiveTab('write')}>Write</TabButton>
+                                <TabButton isActive={activeTab === 'preview'} onClick={() => setActiveTab('preview')}>Preview</TabButton>
+                            </div>
+                            
+                            {activeTab === 'write' ? (
+                                <>
+                                    <div className="flex items-center gap-1 p-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-600">
+                                        <button type="button" onClick={() => applyFormat('bold')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Bold">
+                                            <BoldIcon className="w-5 h-5"/>
+                                        </button>
+                                        <button type="button" onClick={() => applyFormat('italic')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Italic">
+                                            <ItalicIcon className="w-5 h-5"/>
+                                        </button>
+                                        <button type="button" onClick={() => applyFormat('underline')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Underline">
+                                            <UnderlineIcon className="w-5 h-5"/>
+                                        </button>
+                                    </div>
+                                    <TextArea 
+                                        id="chapter-content" 
+                                        rows={20} 
+                                        value={content} 
+                                        onChange={handleContentChange} 
+                                        required 
+                                        className="font-serif !border-0 !ring-0 !focus:ring-0 !rounded-t-none"
+                                        ref={contentRef}
+                                    />
+                                </>
+                            ) : (
+                                <div className="p-4 bg-gray-200 dark:bg-gray-700 min-h-[492px]">
+                                    <div 
+                                        className="prose dark:prose-invert max-w-none font-serif leading-loose whitespace-pre-line bg-light-bg dark:bg-dark-bg p-4 rounded-md"
+                                        dangerouslySetInnerHTML={{ __html: content || '<p class="text-gray-400 italic">Start writing in the "Write" tab to see a preview...</p>' }}
+                                    />
+                                </div>
+                            )}
                         </div>
-
-                        <TextArea 
-                            id="chapter-content" 
-                            rows={20} 
-                            value={content} 
-                            onChange={handleContentChange} 
-                            required 
-                            className="font-serif !rounded-t-none"
-                            ref={contentRef}
-                        />
                     </div>
                     <div className="flex justify-end items-center gap-4">
                         <SaveStatusIndicator />

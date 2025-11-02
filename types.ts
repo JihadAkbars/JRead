@@ -17,6 +17,8 @@ export interface User {
     twitter?: string;
     instagram?: string;
   };
+  showBookmarks?: boolean;
+  showLikes?: boolean;
 }
 
 export interface Novel {

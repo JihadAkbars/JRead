@@ -70,5 +70,5 @@ export interface ChangelogEntry {
   version: string;
   date: string; // ISO date string
   changes: ChangelogChange[];
-  created_at?: Date;
+  createdAt?: Date;
 }

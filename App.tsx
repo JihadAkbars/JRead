@@ -1898,7 +1898,7 @@ const EditChapterPage = () => {
 };
 
 const SettingsPage = () => {
-    const { user, updateCurrentUser } = useAuth();
+    const { user, updateCurrentUser, logout } = useAuth();
     const navigate = useNavigate();
 
     const [penName, setPenName] = useState('');
@@ -1911,6 +1911,7 @@ const SettingsPage = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
     useEffect(() => {
         if (user) {
@@ -1971,6 +1972,23 @@ const SettingsPage = () => {
         }
     };
     
+    const handleDeleteAccount = async () => {
+        if (!user) return;
+        setIsSubmitting(true);
+        setError('');
+
+        const { success } = await ApiService.deleteUserAccount();
+
+        if (success) {
+            await logout();
+            navigate('/');
+        } else {
+            setError('Failed to delete your account. Please try again or contact support.');
+            setIsSubmitting(false);
+            setIsDeleteModalOpen(false);
+        }
+    };
+
     const isAuthor = user?.role === UserRole.AUTHOR || user?.role === UserRole.ADMIN || user?.role === UserRole.OWNER;
 
     const ToggleSwitch = ({ checked, onChange, label }: { checked: boolean, onChange: (checked: boolean) => void, label: string }) => (
@@ -2026,7 +2044,36 @@ const SettingsPage = () => {
                         <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Changes'}</Button>
                     </div>
                 </form>
+
+                 <div className="mt-8 pt-6 border-t border-red-300 dark:border-red-800/50">
+                    <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-3">Danger Zone</h3>
+                    <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-md flex justify-between items-center">
+                        <div>
+                            <p className="font-semibold">Delete This Account</p>
+                            <p className="text-sm text-red-800/80 dark:text-red-300/80">Once you delete your account, there is no going back. Please be certain.</p>
+                        </div>
+                        <Button variant="danger" onClick={() => setIsDeleteModalOpen(true)}>
+                            Delete Account
+                        </Button>
+                    </div>
+                </div>
             </div>
+            
+            <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)}>
+                <h2 className="text-2xl font-bold text-red-600 mb-4">Are you absolutely sure?</h2>
+                <p className="text-light-text dark:text-dark-text mb-4">
+                    This action cannot be undone. This will permanently delete your account, novels, chapters, and all other associated data.
+                </p>
+                <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="ghost" onClick={() => setIsDeleteModalOpen(false)} disabled={isSubmitting}>
+                        Cancel
+                    </Button>
+                    <Button variant="danger" onClick={handleDeleteAccount} disabled={isSubmitting}>
+                        {isSubmitting ? 'Deleting...' : 'Yes, Delete My Account'}
+                    </Button>
+                </div>
+            </Modal>
+
         </div>
     );
 };

@@ -4,7 +4,7 @@ import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
 import { User, UserRole, Novel, Chapter, Comment, ChangelogEntry, ChangelogChange, ChangelogChangeType } from './types';
 import { ApiService } from './data';
 import { GENRES } from './constants';
-import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon, PlusIcon, PencilIcon, TrashIcon, BoldIcon, ItalicIcon, UnderlineIcon } from './components/Icons';
+import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon, PlusIcon, PencilIcon, TrashIcon, BoldIcon, ItalicIcon, UnderlineIcon, SettingsIcon } from './components/Icons';
 
 // --- AUTH CONTEXT --- //
 interface AuthContextType {
@@ -14,6 +14,7 @@ interface AuthContextType {
   signup: (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string) => Promise<{ success: boolean; message: string; }>;
   logout: () => void;
   showAuthModal: () => void;
+  updateCurrentUser: (updates: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -398,6 +399,13 @@ const Header = () => {
                             My Works
                         </Link>
                     )}
+                    <Link 
+                        to="/settings"
+                        onClick={() => setIsProfileDropdownOpen(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                        Settings
+                    </Link>
                     {isAdmin && (
                         <Link 
                             to="/admin-panel" 
@@ -854,7 +862,10 @@ const ProfilePage = () => {
     const { userId } = useParams();
     const [profileUser, setProfileUser] = useState<User | null>(null);
     const [userNovels, setUserNovels] = useState<Novel[]>([]);
+    const [bookmarkedNovels, setBookmarkedNovels] = useState<Novel[]>([]);
+    const [likedNovels, setLikedNovels] = useState<Novel[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<'creations' | 'bookmarks' | 'likes'>('creations');
     
     useEffect(() => {
         const fetchProfileData = async () => {
@@ -863,15 +874,25 @@ const ProfilePage = () => {
                 return;
             }
             setIsLoading(true);
+            setActiveTab('creations'); // Reset tab on user change
 
             try {
                 const user = await ApiService.getUser(userId);
                 setProfileUser(user);
                 
-                if (user && (user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN || user.role === UserRole.OWNER)) {
-                    const novels = await ApiService.getNovelsByAuthor(user.id);
-                    // In a real app with proper status fields, you would filter for 'PUBLISHED' status here
-                    setUserNovels(novels); 
+                if (user) {
+                    const isAuthor = user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN || user.role === UserRole.OWNER;
+                    if (isAuthor) {
+                        const novels = await ApiService.getNovelsByAuthor(user.id);
+                        setUserNovels(novels);
+                    } else {
+                        setUserNovels([]);
+                    }
+                    const bookmarks = await ApiService.getBookmarkedNovels(user.id);
+                    setBookmarkedNovels(bookmarks);
+
+                    const likes = await ApiService.getLikedNovels(user.id);
+                    setLikedNovels(likes);
                 }
             } catch (error) {
                 console.error("Failed to fetch profile data:", error);
@@ -881,39 +902,73 @@ const ProfilePage = () => {
             }
         };
         fetchProfileData();
-    }, [userId, loggedInUser]);
+    }, [userId]);
     
     if (isLoading) return <div className="text-center py-10">Loading profile...</div>;
     if (!profileUser) return <div className="text-center py-10">User not found.</div>;
     
+    const isOwner = loggedInUser?.id === profileUser.id;
     const isAuthor = profileUser.role === UserRole.AUTHOR || profileUser.role === UserRole.ADMIN || profileUser.role === UserRole.OWNER;
+    const canViewBookmarks = isOwner || (profileUser.showBookmarks ?? false);
+    const canViewLikes = isOwner || (profileUser.showLikes ?? false);
+
+    const TabButton = ({ tab, currentTab, children }: { tab: typeof activeTab, currentTab: typeof activeTab, children: ReactNode }) => (
+        <button 
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${tab === currentTab ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+        >{children}</button>
+    );
+
+    const NovelsGrid = ({ novels, emptyMessage }: { novels: Novel[], emptyMessage: string }) => (
+        novels.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                {novels.map(novel => <NovelCard key={novel.id} novel={novel} />)}
+            </div>
+         ) : (
+            <p className="text-gray-500 dark:text-gray-400 py-8 text-center">{emptyMessage}</p>
+         )
+    );
 
     return (
         <div className="container mx-auto p-4 md:p-8">
-            <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-lg p-8">
+            <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-lg p-8 mb-8">
                 <div className="flex flex-col md:flex-row items-center gap-8">
                     <img src={profileUser.profilePicture} alt="Profile" className="w-32 h-32 rounded-full ring-4 ring-primary object-cover"/>
                     <div className="flex-grow text-center md:text-left">
-                        <h1 className="text-3xl font-bold">{profileUser.username} {profileUser.penName && `(${profileUser.penName})`}</h1>
-                        <p className="text-gray-500 dark:text-gray-400">{profileUser.email}</p>
+                        <div className="flex items-center justify-center md:justify-start gap-4">
+                            <h1 className="text-3xl font-bold">{profileUser.penName || profileUser.username}</h1>
+                            {isOwner && (
+                                <Link to="/settings" title="Settings">
+                                    <Button variant="ghost" className="!p-2">
+                                        <SettingsIcon className="w-6 h-6" />
+                                    </Button>
+                                </Link>
+                            )}
+                        </div>
+                        {profileUser.penName && <p className="text-gray-500 dark:text-gray-400">@{profileUser.username}</p>}
                         <p className="mt-2 text-lg font-semibold text-secondary capitalize">{profileUser.role.toLowerCase()}</p>
                         {profileUser.bio && <p className="mt-4 text-gray-700 dark:text-gray-300">{profileUser.bio}</p>}
                     </div>
                 </div>
             </div>
 
-             {isAuthor && (
-                 <div className="mt-8">
-                    <h2 className="text-2xl font-bold mb-4">{`Novels by ${profileUser.penName || profileUser.username}`}</h2>
-                     {userNovels.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                            {userNovels.map(novel => <NovelCard key={novel.id} novel={novel} />)}
-                        </div>
-                     ) : (
-                        <p className="text-gray-500 dark:text-gray-400">This author hasn't published any novels yet.</p>
-                     )}
+             <div className="mt-8">
+                <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+                    {isAuthor && <TabButton tab="creations" currentTab={activeTab}>Creations</TabButton>}
+                    {canViewBookmarks && <TabButton tab="bookmarks" currentTab={activeTab}>Bookmarks</TabButton>}
+                    {canViewLikes && <TabButton tab="likes" currentTab={activeTab}>Liked Novels</TabButton>}
                 </div>
-             )}
+
+                {activeTab === 'creations' && isAuthor && (
+                    <NovelsGrid novels={userNovels} emptyMessage="This author hasn't published any novels yet." />
+                )}
+                {activeTab === 'bookmarks' && canViewBookmarks && (
+                    <NovelsGrid novels={bookmarkedNovels} emptyMessage={isOwner ? "You haven't bookmarked any novels." : "This user's bookmarks are private or they haven't bookmarked any novels."} />
+                )}
+                {activeTab === 'likes' && canViewLikes && (
+                    <NovelsGrid novels={likedNovels} emptyMessage={isOwner ? "You haven't liked any novels." : "This user's liked novels are private or they haven't liked any."} />
+                )}
+             </div>
         </div>
     );
 };
@@ -1842,12 +1897,151 @@ const EditChapterPage = () => {
     );
 };
 
+const SettingsPage = () => {
+    const { user, updateCurrentUser } = useAuth();
+    const navigate = useNavigate();
+
+    const [penName, setPenName] = useState('');
+    const [bio, setBio] = useState('');
+    const [showBookmarks, setShowBookmarks] = useState(true);
+    const [showLikes, setShowLikes] = useState(true);
+    const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
+    const [profilePictureUrl, setProfilePictureUrl] = useState('');
+    
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
+
+    useEffect(() => {
+        if (user) {
+            setPenName(user.penName || '');
+            setBio(user.bio || '');
+            setShowBookmarks(user.showBookmarks ?? true);
+            setShowLikes(user.showLikes ?? true);
+            setProfilePictureUrl(user.profilePicture);
+        } else {
+            navigate('/');
+        }
+    }, [user, navigate]);
+
+    const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setProfilePictureFile(file);
+            setProfilePictureUrl(URL.createObjectURL(file));
+        }
+    };
+    
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+        setIsSubmitting(true);
+        setError('');
+        setSuccessMessage('');
+
+        try {
+            let finalProfilePictureUrl = profilePictureUrl;
+            if (profilePictureFile) {
+                const uploadedUrl = await ApiService.uploadProfilePicture(profilePictureFile);
+                if (!uploadedUrl) throw new Error('Profile picture upload failed.');
+                finalProfilePictureUrl = uploadedUrl;
+            }
+
+            const updatedProfileData = {
+                penName,
+                bio,
+                showBookmarks,
+                showLikes,
+                profilePicture: finalProfilePictureUrl,
+            };
+            
+            const updatedUser = await ApiService.updateUserProfile(user.id, updatedProfileData);
+
+            if (updatedUser) {
+                updateCurrentUser(updatedUser);
+                setSuccessMessage('Profile updated successfully!');
+            } else {
+                throw new Error('Failed to update profile on the server.');
+            }
+
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    const isAuthor = user?.role === UserRole.AUTHOR || user?.role === UserRole.ADMIN || user?.role === UserRole.OWNER;
+
+    const ToggleSwitch = ({ checked, onChange, label }: { checked: boolean, onChange: (checked: boolean) => void, label: string }) => (
+        <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-light-text dark:text-dark-text">{label}</span>
+            <div className="relative">
+                <input type="checkbox" className="sr-only" checked={checked} onChange={e => onChange(e.target.checked)} />
+                <div className="block bg-gray-300 dark:bg-gray-600 w-14 h-8 rounded-full"></div>
+                <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${checked ? 'transform translate-x-6 bg-secondary' : ''}`}></div>
+            </div>
+        </label>
+    );
+
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <div className="max-w-2xl mx-auto bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-md">
+                <h1 className="text-3xl font-bold mb-6">Settings</h1>
+                {error && <p className="text-red-500 text-center mb-4 bg-red-100 dark:bg-red-900/50 p-3 rounded-md">{error}</p>}
+                {successMessage && <p className="text-green-500 text-center mb-4 bg-green-100 dark:bg-green-900/50 p-3 rounded-md">{successMessage}</p>}
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="flex items-center gap-6">
+                        <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-primary/50 relative group">
+                            <img src={profilePictureUrl} alt="Profile preview" className="w-full h-full object-cover" />
+                            <label htmlFor="profile-picture" className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                <span className="text-white text-sm font-semibold">Change</span>
+                            </label>
+                            <input id="profile-picture" type="file" accept="image/*" onChange={handleProfilePictureChange} className="hidden" />
+                        </div>
+                        <div className="flex-grow">
+                            <h2 className="text-xl font-bold">{user?.username}</h2>
+                            <p className="text-gray-500">{user?.email}</p>
+                        </div>
+                    </div>
+                    {isAuthor && (
+                      <div>
+                          <label htmlFor="penName" className="block text-sm font-medium mb-1">Pen Name</label>
+                          <Input id="penName" type="text" value={penName} onChange={e => setPenName(e.target.value)} />
+                      </div>
+                    )}
+                    <div>
+                        <label htmlFor="bio" className="block text-sm font-medium mb-1">Bio</label>
+                        <TextArea id="bio" rows={4} value={bio} onChange={e => setBio(e.target.value)} />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold mb-3">Privacy Settings</h3>
+                        <div className="space-y-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-md">
+                            <ToggleSwitch label="Show my bookmarked novels on my profile" checked={showBookmarks} onChange={setShowBookmarks} />
+                            <ToggleSwitch label="Show novels I've liked on my profile" checked={showLikes} onChange={setShowLikes} />
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button type="button" variant="ghost" onClick={() => navigate(`/user/${user?.id}`)}>Cancel</Button>
+                        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Changes'}</Button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 const AdminPanelPage = () => {
     const { user: currentUser } = useAuth();
+    const { removeNovelFromList } = useNovels();
     const navigate = useNavigate();
+    const [activeTab, setActiveTab] = useState<'users' | 'novels'>('users');
     const [users, setUsers] = useState<User[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
+    const [isUsersLoading, setIsUsersLoading] = useState(true);
+    const [userError, setUserError] = useState('');
+    const [novels, setNovels] = useState<Novel[]>([]);
+    const [isNovelsLoading, setIsNovelsLoading] = useState(true);
+    const [novelError, setNovelError] = useState('');
 
     useEffect(() => {
         if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.OWNER)) {
@@ -1855,93 +2049,151 @@ const AdminPanelPage = () => {
             return;
         }
 
-        const fetchUsers = async () => {
-            setIsLoading(true);
+        const fetchAllData = async () => {
+            setIsUsersLoading(true);
+            setIsNovelsLoading(true);
             try {
-                const allUsers = await ApiService.getUsers();
+                const [allUsers, allNovels] = await Promise.all([
+                    ApiService.getUsers(),
+                    ApiService.getNovels(),
+                ]);
                 setUsers(allUsers);
+                setNovels(allNovels);
             } catch (err) {
-                setError('Failed to fetch users.');
+                setUserError('Failed to fetch data.');
+                setNovelError('Failed to fetch data.');
                 console.error(err);
             } finally {
-                setIsLoading(false);
+                setIsUsersLoading(false);
+                setIsNovelsLoading(false);
             }
         };
 
-        fetchUsers();
+        fetchAllData();
     }, [currentUser, navigate]);
     
     const handleRoleChange = async (targetUserId: string, newRole: UserRole) => {
         const originalUsers = [...users];
-        
-        // Optimistic UI update
         setUsers(users.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
         
-        const updatedUser = await ApiService.updateUser(targetUserId, { role: newRole });
+        const updatedUser = await ApiService.updateUserRole(targetUserId, { role: newRole });
         if (!updatedUser) {
             alert('Failed to update user role.');
-            setUsers(originalUsers); // Revert on failure
+            setUsers(originalUsers);
+        }
+    };
+
+    const handleDeleteNovel = async (novelId: string) => {
+        if (window.confirm('Are you sure you want to permanently delete this novel and all its chapters? This is a critical action.')) {
+            const { success } = await ApiService.deleteNovel(novelId);
+            if (success) {
+                setNovels(prev => prev.filter(n => n.id !== novelId));
+                removeNovelFromList(novelId);
+            } else {
+                alert('Failed to delete the novel.');
+            }
         }
     };
     
     const canChangeRole = (targetUser: User): boolean => {
-        if (!currentUser) return false;
-        if (currentUser.id === targetUser.id) return false; // Cannot change own role
-
-        if (currentUser.role === UserRole.OWNER) {
-            return true; // Owner can change anyone except themselves
-        }
-
+        if (!currentUser || currentUser.id === targetUser.id) return false;
+        if (currentUser.role === UserRole.OWNER) return true;
         if (currentUser.role === UserRole.ADMIN) {
-            // Admin cannot change Owner or other Admins
-            if (targetUser.role === UserRole.OWNER || targetUser.role === UserRole.ADMIN) {
-                return false;
-            }
-            return true;
+            return !(targetUser.role === UserRole.OWNER || targetUser.role === UserRole.ADMIN);
         }
-        
         return false;
     };
 
-    if (isLoading) return <div className="text-center py-10">Loading users...</div>;
+    const TabButton = ({ tab, children }: { tab: 'users' | 'novels', children: ReactNode }) => (
+        <button
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+        >
+            {children}
+        </button>
+    );
 
     return (
         <div className="container mx-auto px-4 py-8">
-            <h1 className="text-3xl font-bold mb-6">Admin Panel - User Management</h1>
-            {error && <p className="text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md mb-4">{error}</p>}
-            <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md overflow-x-auto">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-100 dark:bg-gray-800">
-                        <tr>
-                            <th className="p-4 font-semibold">Username</th>
-                            <th className="p-4 font-semibold">Email</th>
-                            <th className="p-4 font-semibold">Role</th>
-                            <th className="p-4 font-semibold">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {users.map(user => (
-                            <tr key={user.id} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
-                                <td className="p-4">{user.username}</td>
-                                <td className="p-4">{user.email}</td>
-                                <td className="p-4 capitalize">{user.role.toLowerCase()}</td>
-                                <td className="p-4">
-                                    <Select 
-                                        value={user.role}
-                                        onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
-                                        disabled={!canChangeRole(user)}
-                                        className="w-40"
-                                    >
-                                        {Object.values(UserRole).map(role => (
-                                            <option key={role} value={role}>{role}</option>
-                                        ))}
-                                    </Select>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            <h1 className="text-3xl font-bold mb-6">Admin Panel</h1>
+            <div className="mb-4 border-b border-gray-200 dark:border-gray-700">
+                <TabButton tab="users">User Management</TabButton>
+                <TabButton tab="novels">Novel Management</TabButton>
             </div>
+            
+            {activeTab === 'users' && (
+                <div>
+                    {isUsersLoading ? <div className="text-center py-10">Loading users...</div> :
+                     userError ? <p className="text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md mb-4">{userError}</p> :
+                     <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-100 dark:bg-gray-800">
+                                <tr>
+                                    <th className="p-4 font-semibold">Username</th>
+                                    <th className="p-4 font-semibold">Email</th>
+                                    <th className="p-4 font-semibold">Role</th>
+                                    <th className="p-4 font-semibold">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {users.map(user => (
+                                    <tr key={user.id} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+                                        <td className="p-4">{user.username}</td>
+                                        <td className="p-4">{user.email}</td>
+                                        <td className="p-4 capitalize">{user.role.toLowerCase()}</td>
+                                        <td className="p-4">
+                                            <Select 
+                                                value={user.role}
+                                                onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
+                                                disabled={!canChangeRole(user)}
+                                                className="w-40"
+                                            >
+                                                {Object.values(UserRole).map(role => (
+                                                    <option key={role} value={role}>{role}</option>
+                                                ))}
+                                            </Select>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    }
+                </div>
+            )}
+            {activeTab === 'novels' && (
+                <div>
+                    {isNovelsLoading ? <div className="text-center py-10">Loading novels...</div> :
+                     novelError ? <p className="text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md mb-4">{novelError}</p> :
+                     <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md overflow-x-auto">
+                        <table className="w-full text-left">
+                           <thead className="bg-gray-100 dark:bg-gray-800">
+                                <tr>
+                                    <th className="p-4 font-semibold">Title</th>
+                                    <th className="p-4 font-semibold">Author</th>
+                                    <th className="p-4 font-semibold">Status</th>
+                                    <th className="p-4 font-semibold">Actions</th>
+                                </tr>
+                            </thead>
+                             <tbody>
+                                {novels.map(novel => (
+                                    <tr key={novel.id} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+                                        <td className="p-4">{novel.title}</td>
+                                        <td className="p-4">{novel.authorName}</td>
+                                        <td className="p-4 capitalize">{novel.status}</td>
+                                        <td className="p-4">
+                                            <Button variant="danger" onClick={() => handleDeleteNovel(novel.id)} className="text-sm !py-1 !px-2">
+                                                Delete
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    }
+                </div>
+            )}
         </div>
     );
 };
@@ -1957,6 +2209,9 @@ const AppRouter = () => {
       <Route path="/user/:userId" element={<ProfilePage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/changelog" element={<ChangelogPage />} />
+
+      {/* Settings Route */}
+      <Route path="/settings" element={<SettingsPage />} />
 
       {/* Authoring Routes */}
       <Route path="/my-works" element={<MyWorksPage />} />
@@ -2054,6 +2309,13 @@ const App = () => {
     setUser(null);
     setIsAuthenticated(false);
   };
+  
+  const updateCurrentUser = (updates: Partial<User>) => {
+    setUser(prevUser => {
+        if (!prevUser) return null;
+        return { ...prevUser, ...updates };
+    });
+  };
 
   const authContextValue = {
     user,
@@ -2062,6 +2324,7 @@ const App = () => {
     signup,
     logout,
     showAuthModal: () => setIsAuthModalOpen(true),
+    updateCurrentUser,
   };
   
   if (!areSupabaseCredentialsSet) {

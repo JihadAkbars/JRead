@@ -1511,7 +1511,7 @@ const ManageChaptersPage = () => {
                         {novel.chapters.map(chapter => (
                             <li key={chapter.id} className="p-4 flex justify-between items-center">
                                 <div>
-                                    <p className="font-semibold">{chapter.chapterNumber}. {chapter.title}</p>
+                                    <p className="font-semibold">{chapter.chapterNumber}. {chapter.title} <span className="text-sm font-normal text-gray-500 dark:text-gray-400">({chapter.content?.split(/\s+/).filter(Boolean).length || 0} words)</span></p>
                                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${chapter.isPublished ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                         {chapter.isPublished ? 'Published' : 'Draft'}
                                     </span>

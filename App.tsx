@@ -1535,55 +1535,117 @@ const ManageChaptersPage = () => {
 };
 
 const EditChapterPage = () => {
-    const { novelId, chapterId } = useParams();
+    const { novelId, chapterId: chapterIdFromParams } = useParams();
     const { user } = useAuth();
     const navigate = useNavigate();
+
     const [isEditMode, setIsEditMode] = useState(false);
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
     const [novel, setNovel] = useState<Novel | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
+    const [isSubmittingManual, setIsSubmittingManual] = useState(false);
+    const autoSaveTimeoutRef = useRef<number | null>(null);
 
     useEffect(() => {
+        setIsEditMode(!!chapterIdFromParams);
         const loadData = async () => {
-            if (!novelId || !user) {
-                navigate('/my-works');
-                return;
-            }
-
-            const novelData = await ApiService.getNovel(novelId);
-            if (!novelData || novelData.authorId !== user.id) {
-                navigate('/my-works');
-                return;
-            }
-            setNovel(novelData);
-
-            if (chapterId) {
-                setIsEditMode(true);
-                const chapter = novelData.chapters.find(c => c.id === chapterId);
-                if (chapter) {
-                    setTitle(chapter.title);
-                    setContent(chapter.content);
-                } else {
-                    navigate(`/manage-chapters/${novelId}`);
+            if (!novelId || !user) { navigate('/my-works'); return; }
+            setIsLoading(true);
+            try {
+                const novelData = await ApiService.getNovel(novelId);
+                if (!novelData || novelData.authorId !== user.id) {
+                    navigate('/my-works');
+                    return;
                 }
+                setNovel(novelData);
+                if (chapterIdFromParams) {
+                    const chapter = novelData.chapters.find(c => c.id === chapterIdFromParams);
+                    if (chapter) {
+                        setTitle(chapter.title);
+                        setContent(chapter.content);
+                    } else {
+                        navigate(`/manage-chapters/${novelId}`);
+                    }
+                }
+                setSaveStatus('idle');
+            } catch (e) {
+                console.error("Failed to load data", e);
+                navigate('/my-works');
+            } finally {
+                setIsLoading(false);
             }
         };
         loadData();
-    }, [novelId, chapterId, user, navigate]);
+    }, [novelId, chapterIdFromParams, user, navigate]);
+
+    useEffect(() => {
+        if (isLoading || saveStatus !== 'dirty') {
+            return;
+        }
+
+        if (autoSaveTimeoutRef.current) {
+            clearTimeout(autoSaveTimeoutRef.current);
+        }
+
+        autoSaveTimeoutRef.current = window.setTimeout(async () => {
+            if (!novelId || !user || !novel) return;
+
+            setSaveStatus('saving');
+
+            try {
+                if (chapterIdFromParams) {
+                    await ApiService.updateChapter(chapterIdFromParams, { title, content });
+                    setSaveStatus('saved');
+                } else {
+                    const newChapterNumber = (novel.chapters.length > 0 ? Math.max(...novel.chapters.map(c => c.chapterNumber)) : 0) + 1;
+                    const newChapter = await ApiService.addChapter({
+                        novelId,
+                        title: title || "Untitled Draft",
+                        content,
+                        chapterNumber: newChapterNumber,
+                        isPublished: false,
+                    });
+                    
+                    if (newChapter) {
+                        setSaveStatus('saved');
+                        navigate(`/edit-chapter/${novelId}/${newChapter.id}`, { replace: true });
+                    } else {
+                        throw new Error("Failed to create new chapter draft.");
+                    }
+                }
+            } catch (error) {
+                console.error("Auto-save failed:", error);
+                setSaveStatus('error');
+                setTimeout(() => setSaveStatus('dirty'), 2000); 
+            }
+        }, 2000);
+
+        return () => {
+            if (autoSaveTimeoutRef.current) {
+                clearTimeout(autoSaveTimeoutRef.current);
+            }
+        };
+    }, [title, content, saveStatus, isLoading, novelId, chapterIdFromParams, user, novel, navigate]);
 
     const handleSubmit = async (publish: boolean) => {
+        if (autoSaveTimeoutRef.current) {
+            clearTimeout(autoSaveTimeoutRef.current);
+        }
         if (!novelId || !user || !novel) return;
-        setIsSubmitting(true);
+        setIsSubmittingManual(true);
+        setSaveStatus('saving');
         
         try {
-            if (isEditMode && chapterId) {
-                await ApiService.updateChapter(chapterId, { title, content, isPublished: publish });
+            if (isEditMode && chapterIdFromParams) {
+                await ApiService.updateChapter(chapterIdFromParams, { title, content, isPublished: publish });
             } else {
-                const newChapterNumber = (novel.chapters[novel.chapters.length - 1]?.chapterNumber || 0) + 1;
+                const newChapterNumber = (novel.chapters.length > 0 ? Math.max(...novel.chapters.map(c => c.chapterNumber)) : 0) + 1;
                 await ApiService.addChapter({
                     novelId,
-                    title,
+                    title: title || 'Untitled',
                     content,
                     chapterNumber: newChapterNumber,
                     isPublished: publish,
@@ -1592,13 +1654,35 @@ const EditChapterPage = () => {
             navigate(`/manage-chapters/${novelId}`);
         } catch (error) {
             console.error("Failed to save chapter:", error);
+            setSaveStatus('error');
             alert("Failed to save chapter.");
         } finally {
-            setIsSubmitting(false);
+            setIsSubmittingManual(false);
         }
     };
     
-    if (!novel) return <div className="text-center py-10">Loading...</div>;
+    if (isLoading) return <div className="text-center py-10">Loading...</div>;
+
+    const SaveStatusIndicator = () => {
+        let text = '';
+        if (isSubmittingManual) text = 'Saving...';
+        else if (saveStatus === 'saving') text = 'Saving...';
+        else if (saveStatus === 'saved') text = 'All changes saved.';
+        else if (saveStatus === 'error') text = 'Error saving.';
+        else if (saveStatus === 'dirty') text = 'Unsaved changes...';
+
+        return <span className="text-sm text-gray-500 dark:text-gray-400 italic min-h-[1.25rem]">{text}</span>;
+    };
+
+    const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setSaveStatus('dirty');
+        setTitle(e.target.value);
+    };
+
+    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setSaveStatus('dirty');
+        setContent(e.target.value);
+    };
 
     return (
         <div className="container mx-auto px-4 py-8">
@@ -1610,16 +1694,17 @@ const EditChapterPage = () => {
                 <div className="space-y-6">
                     <div>
                         <label htmlFor="chapter-title" className="block text-sm font-medium mb-1">Title</label>
-                        <Input id="chapter-title" type="text" value={title} onChange={e => setTitle(e.target.value)} required />
+                        <Input id="chapter-title" type="text" value={title} onChange={handleTitleChange} required />
                     </div>
                     <div>
                         <label htmlFor="chapter-content" className="block text-sm font-medium mb-1">Content</label>
-                        <TextArea id="chapter-content" rows={20} value={content} onChange={e => setContent(e.target.value)} required className="font-serif"/>
+                        <TextArea id="chapter-content" rows={20} value={content} onChange={handleContentChange} required className="font-serif"/>
                     </div>
-                    <div className="flex justify-end gap-2">
-                        <Button variant="ghost" onClick={() => handleSubmit(false)} disabled={isSubmitting}>Save as Draft</Button>
-                        <Button variant="secondary" onClick={() => handleSubmit(true)} disabled={isSubmitting}>
-                            {isSubmitting ? 'Saving...' : (isEditMode ? 'Update & Publish' : 'Publish')}
+                    <div className="flex justify-end items-center gap-4">
+                        <SaveStatusIndicator />
+                        <Button variant="ghost" onClick={() => handleSubmit(false)} disabled={isSubmittingManual}>Save as Draft</Button>
+                        <Button variant="secondary" onClick={() => handleSubmit(true)} disabled={isSubmittingManual}>
+                            {isSubmittingManual ? 'Saving...' : (isEditMode ? 'Update & Publish' : 'Publish')}
                         </Button>
                     </div>
                 </div>

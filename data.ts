@@ -259,6 +259,42 @@ export const ApiService = {
     return { success: !error };
   },
 
+  // --- PROGRESS METHODS ---
+  getUserNovelProgress: async (userId: string, novelId: string): Promise<number | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('user_novel_progress')
+      .select('last_read_chapter_number')
+      .eq('user_id', userId)
+      .eq('novel_id', novelId)
+      .single();
+
+    if (error || !data) {
+      if (error && error.code !== 'PGRST116') { // Ignore "no rows" error, which is expected
+          console.error('Error fetching novel progress:', error);
+      }
+      return null;
+    }
+    return data.last_read_chapter_number;
+  },
+
+  setUserNovelProgress: async (userId: string, novelId: string, chapterNumber: number): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    const { error } = await supabase
+      .from('user_novel_progress')
+      .upsert({ 
+        user_id: userId, 
+        novel_id: novelId, 
+        last_read_chapter_number: chapterNumber,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id, novel_id' });
+
+    if (error) {
+        console.error('Error setting novel progress:', error);
+    }
+    return { success: !error };
+  },
+
   // --- COMMENT METHODS ---
   getComments: async (chapterId: string): Promise<Comment[]> => {
     if (!supabase) return [];

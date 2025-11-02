@@ -969,7 +969,7 @@ const ContactPage = () => {
 const ChangelogFormModal = ({ isOpen, onClose, onSubmit, initialData }: {
     isOpen: boolean,
     onClose: () => void,
-    onSubmit: (data: Omit<ChangelogEntry, 'id' | 'created_at'>) => void,
+    onSubmit: (data: Omit<ChangelogEntry, 'id' | 'createdAt'>) => void,
     initialData?: ChangelogEntry | null
 }) => {
     const [version, setVersion] = useState('');
@@ -1098,7 +1098,7 @@ const ChangelogPage = () => {
         fetchChangelogs();
     }, []);
     
-    const handleFormSubmit = async (data: Omit<ChangelogEntry, 'id' | 'created_at'>) => {
+    const handleFormSubmit = async (data: Omit<ChangelogEntry, 'id' | 'createdAt'>) => {
         const result = editingEntry
             ? await ApiService.updateChangelog(editingEntry.id, data)
             : await ApiService.addChangelog(data);

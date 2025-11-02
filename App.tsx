@@ -1,11 +1,10 @@
-// --- Lieur Ahk --- //
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
-import { User, UserRole, Novel, Chapter, Comment, ChangelogEntry, ChangelogChange, ChangelogChangeType } from './types';
+import { User, UserRole, Novel, Chapter, Comment, ChangelogEntry, ChangelogChange, ChangelogChangeType, Notification, NotificationType } from './types';
 import { ApiService } from './data';
 import { GENRES } from './constants';
-import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon, PlusIcon, PencilIcon, TrashIcon, BoldIcon, ItalicIcon, UnderlineIcon, SettingsIcon } from './components/Icons';
+import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, ArrowRightIcon, BookmarkIcon, StarIcon, HeartIcon, XIcon, PlusIcon, PencilIcon, TrashIcon, BoldIcon, ItalicIcon, UnderlineIcon, SettingsIcon, CheckCircleIcon, AlertTriangleIcon } from './components/Icons';
 
 // --- AUTH CONTEXT --- //
 interface AuthContextType {
@@ -83,6 +82,71 @@ const NovelsProvider = ({ children }: { children: ReactNode }) => {
     return <NovelsContext.Provider value={value}>{children}</NovelsContext.Provider>;
 }
 
+// --- NOTIFICATION CONTEXT --- //
+interface NotificationContextType {
+    addNotification: (message: string, type: NotificationType) => void;
+}
+
+const NotificationContext = createContext<NotificationContextType | null>(null);
+
+export const useNotification = () => {
+    const context = useContext(NotificationContext);
+    if (!context) throw new Error("useNotification must be used within a NotificationProvider");
+    return context;
+};
+
+const NotificationToast = ({ notification }: { notification: Notification }) => {
+    const { type, message } = notification;
+
+    const baseClasses = 'flex items-center gap-3 p-4 rounded-md shadow-lg text-white animate-fade-in w-full max-w-sm';
+    const typeClasses: Record<NotificationType, string> = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        info: 'bg-blue-500',
+    };
+    const icons: Record<NotificationType, ReactNode> = {
+        success: <CheckCircleIcon className="w-6 h-6" />,
+        error: <AlertTriangleIcon className="w-6 h-6" />,
+        info: null,
+    };
+
+    return (
+        <div className={`${baseClasses} ${typeClasses[type]}`}>
+            {icons[type]}
+            <span>{message}</span>
+        </div>
+    );
+};
+
+const NotificationContainer = ({ notifications }: { notifications: Notification[] }) => {
+    return (
+        <div className="fixed bottom-4 right-4 z-50 space-y-2">
+            {notifications.map(notification => (
+                <NotificationToast key={notification.id} notification={notification} />
+            ))}
+        </div>
+    );
+};
+
+const NotificationProvider = ({ children }: { children: ReactNode }) => {
+    const [notifications, setNotifications] = useState<Notification[]>([]);
+
+    const addNotification = (message: string, type: NotificationType) => {
+        const id = new Date().getTime().toString();
+        setNotifications(prev => [...prev, { id, message, type }]);
+
+        setTimeout(() => {
+            setNotifications(prev => prev.filter(n => n.id !== id));
+        }, 5000); // Disappear after 5 seconds
+    };
+
+    return (
+        <NotificationContext.Provider value={{ addNotification }}>
+            {children}
+            <NotificationContainer notifications={notifications} />
+        </NotificationContext.Provider>
+    );
+};
 
 // --- UI HELPER COMPONENTS --- //
 type ButtonProps = ComponentPropsWithoutRef<'button'> & {
@@ -560,6 +624,7 @@ const NovelDetailPage = () => {
     const { id } = useParams();
     const { user, showAuthModal } = useAuth();
     const { updateNovelInList } = useNovels();
+    const { addNotification } = useNotification();
     const [novel, setNovel] = useState<Novel | null>(null);
     const [isBookmarked, setIsBookmarked] = useState(false);
     const [hasLiked, setHasLiked] = useState(false);
@@ -614,30 +679,58 @@ const NovelDetailPage = () => {
         if (!user) { showAuthModal(); return; }
         if (!novel) return;
 
-        const newBookmarkState = !isBookmarked;
-        setIsBookmarked(newBookmarkState);
-        if (newBookmarkState) {
-            await ApiService.addBookmark(user.id, novel.id);
-        } else {
-            await ApiService.removeBookmark(user.id, novel.id);
+        const originalBookmarkState = isBookmarked;
+        setIsBookmarked(!originalBookmarkState); // Optimistic update
+        
+        try {
+            const result = !originalBookmarkState
+                ? await ApiService.addBookmark(user.id, novel.id)
+                : await ApiService.removeBookmark(user.id, novel.id);
+            
+            if (!result.success) {
+                throw new Error('API call failed');
+            }
+            
+            if (!originalBookmarkState) {
+                addNotification("Novel has been bookmarked! See it on your profile.", 'success');
+            }
+
+        } catch (error) {
+            console.error("Failed to toggle bookmark", error);
+            setIsBookmarked(originalBookmarkState); // Revert on failure
+            addNotification("Could not update bookmark. Please try again.", 'error');
         }
     };
 
     const handleLikeToggle = async () => {
         if (!user) { showAuthModal(); return; }
         if (!novel) return;
+        
+        const originalState = { hasLiked: hasLiked, likes: novel.likes };
 
         const newLikedState = !hasLiked;
         const newLikesCount = novel.likes + (newLikedState ? 1 : -1);
         
+        // Optimistic update
         setHasLiked(newLikedState);
         setNovel(prev => prev ? { ...prev, likes: newLikesCount } : null);
         updateNovelInList(novel.id, { likes: newLikesCount });
 
-        if (newLikedState) {
-            await ApiService.likeNovel(user.id, novel.id);
-        } else {
-            await ApiService.unlikeNovel(user.id, novel.id);
+        try {
+            const result = newLikedState
+                ? await ApiService.likeNovel(user.id, novel.id)
+                : await ApiService.unlikeNovel(user.id, novel.id);
+
+            if (!result.success) {
+                throw new Error('API call failed');
+            }
+        } catch (error) {
+            console.error("Failed to toggle like", error);
+            // Revert on failure
+            setHasLiked(originalState.hasLiked);
+            setNovel(prev => prev ? { ...prev, likes: originalState.likes } : null);
+            updateNovelInList(novel.id, { likes: originalState.likes });
+            addNotification("Could not update like. Please try again.", 'error');
         }
     };
 
@@ -2385,18 +2478,20 @@ const App = () => {
   
   return (
     <AuthContext.Provider value={authContextValue}>
-      <NovelsProvider>
-        <HashRouter>
-          <div className="flex flex-col min-h-screen font-sans text-light-text dark:text-dark-text">
-            <Header />
-            <main className="flex-grow">
-              <AppRouter />
-            </main>
-            <Footer />
-          </div>
-          <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
-        </HashRouter>
-      </NovelsProvider>
+      <NotificationProvider>
+        <NovelsProvider>
+          <HashRouter>
+            <div className="flex flex-col min-h-screen font-sans text-light-text dark:text-dark-text">
+              <Header />
+              <main className="flex-grow">
+                <AppRouter />
+              </main>
+              <Footer />
+            </div>
+            <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+          </HashRouter>
+        </NovelsProvider>
+      </NotificationProvider>
     </AuthContext.Provider>
   );
 };

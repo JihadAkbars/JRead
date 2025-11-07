@@ -627,24 +627,113 @@ const Footer = () => {
 
 // --- PAGES --- //
 const AboutPage = () => {
+    const { user } = useAuth();
+    const { addNotification } = useNotification();
+    const isOwner = user?.role === UserRole.OWNER;
+
+    const [content, setContent] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedContent, setEditedContent] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    
+    const defaultContent = `J Read is a website that provides services for creating and reading novels, both fiction and non-fiction.
+The website was founded and is independently developed by Jhdz (Jihad).
+
+Currently, J Read is still in the development stage — both in terms of visual design and backend systems.
+If you encounter any bugs, errors, or other issues, please don’t hesitate to report them through the [Contact page].
+I’ll do my best to fix them as quickly and efficiently as possible.
+
+Thank you for supporting and using J Read!
+    `.trim();
+
+    useEffect(() => {
+        const fetchContent = async () => {
+            setIsLoading(true);
+            try {
+                const fetchedContent = await ApiService.getSiteContent('about_page_content');
+                setContent(fetchedContent || defaultContent);
+            } catch (error) {
+                console.error("Failed to fetch about page content:", error);
+                setContent(defaultContent); // Fallback to default on error
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchContent();
+    }, []);
+
+    const handleEdit = () => {
+        setEditedContent(content);
+        setIsEditing(true);
+    };
+
+    const handleCancel = () => {
+        setIsEditing(false);
+        setEditedContent('');
+    };
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        const { success } = await ApiService.updateSiteContent('about_page_content', editedContent);
+        if (success) {
+            setContent(editedContent);
+            setIsEditing(false);
+            addNotification('About page updated successfully!', 'success');
+        } else {
+            addNotification('Failed to update about page. Please try again.', 'error');
+        }
+        setIsSaving(false);
+    };
+
+    if (isLoading) {
+        return (
+            <div className="container mx-auto px-4 py-8 text-center">
+                <p>Loading...</p>
+            </div>
+        );
+    }
+
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="max-w-3xl mx-auto bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-md">
-                <h1 className="text-3xl font-bold mb-6 text-center">About J Read</h1>
-                <div className="space-y-4 text-gray-700 dark:text-gray-300 leading-relaxed">
-                    <p>
-                        J Read is a website that provides services for creating and reading novels, both fiction and non-fiction.
-                        The website was founded and is independently developed by Jhdz (Jihad).
-                    </p>
-                    <p>
-                        Currently, J Read is still in the development stage — both in terms of visual design and backend systems.
-                        If you encounter any bugs, errors, or other issues, please don’t hesitate to report them through the <Link to="/contact" className="text-primary hover:underline font-semibold">Contact page</Link>.
-                        I’ll do my best to fix them as quickly and efficiently as possible.
-                    </p>
-                    <p>
-                        Thank you for supporting and using J Read!
-                    </p>
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold">About J Read</h1>
+                    {isOwner && !isEditing && <Button onClick={handleEdit}>Edit Page</Button>}
                 </div>
+                
+                {isEditing ? (
+                    <div className="space-y-4">
+                        <TextArea
+                            value={editedContent}
+                            onChange={(e) => setEditedContent(e.target.value)}
+                            rows={15}
+                            className="w-full"
+                        />
+                        <div className="flex justify-end gap-2">
+                            <Button variant="ghost" onClick={handleCancel} disabled={isSaving}>Cancel</Button>
+                            <Button onClick={handleSave} disabled={isSaving}>
+                                {isSaving ? 'Saving...' : 'Save Changes'}
+                            </Button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-4 text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                        {content.split('\n').map((paragraph, index) => {
+                            if (paragraph.includes('[Contact page]')) {
+                                const parts = paragraph.split('[Contact page]');
+                                return (
+                                    <p key={index}>
+                                        {parts[0]}
+                                        <Link to="/contact" className="text-primary hover:underline font-semibold">Contact page</Link>
+                                        {parts[1]}
+                                    </p>
+                                );
+                            }
+                            return <p key={index}>{paragraph}</p>;
+                        })}
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -439,4 +439,35 @@ export const ApiService = {
     const { error } = await supabase.from('changelogs').delete().eq('id', id);
     return { success: !error };
   },
+
+  // --- SITE CONTENT METHODS ---
+  getSiteContent: async (key: string): Promise<string | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('site_content')
+      .select('value')
+      .eq('key', key)
+      .single();
+
+    if (error) {
+      // 'PGRST116' is the code for "no rows found", which is not an error here.
+      if (error.code !== 'PGRST116') {
+        console.error(`Error fetching site content for key "${key}":`, error);
+      }
+      return null;
+    }
+    return data?.value || null;
+  },
+
+  updateSiteContent: async (key: string, value: string): Promise<{ success: boolean }> => {
+    if (!supabase) return { success: false };
+    const { error } = await supabase
+      .from('site_content')
+      .upsert({ key, value }, { onConflict: 'key' });
+    
+    if (error) {
+      console.error(`Error updating site content for key "${key}":`, error);
+    }
+    return { success: !error };
+  },
 };

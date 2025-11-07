@@ -2085,7 +2085,7 @@ const EditChapterPage = () => {
                         <div className="border border-gray-300 dark:border-gray-600 rounded-md">
                              <div className="flex border-b border-gray-300 dark:border-gray-600">
                                 <TabButton isActive={activeTab === 'write'} onClick={() => setActiveTab('write')}>Write</TabButton>
-                                <TabButton isActive={activeTab === 'preview'} onClick={() => setActiveTab('preview')}>Preview</Button>
+                                <TabButton isActive={activeTab === 'preview'} onClick={() => setActiveTab('preview')}>Preview</TabButton>
                                 <div className="flex-grow flex items-center justify-end px-3 gap-2">
                                      <button type="button" onClick={() => applyFormat('bold')} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"><BoldIcon className="w-5 h-5"/></button>
                                      <button type="button" onClick={() => applyFormat('italic')} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"><ItalicIcon className="w-5 h-5"/></button>

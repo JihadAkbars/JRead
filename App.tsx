@@ -43,7 +43,8 @@ export const useNovels = () => {
     return context;
 };
 
-const NovelsProvider = ({ children }: { children: ReactNode }) => {
+// Fix: Changed component to React.FC to correctly handle children prop.
+const NovelsProvider: React.FC = ({ children }) => {
     const [novels, setNovels] = useState<Novel[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -96,7 +97,8 @@ export const useNotification = () => {
     return context;
 };
 
-const NotificationToast = ({ notification }: { notification: Notification }) => {
+// Fix: Changed component to React.FC to correctly handle built-in props like 'key'.
+const NotificationToast: React.FC<{ notification: Notification }> = ({ notification }) => {
     const { type, message } = notification;
 
     const baseClasses = 'flex items-center gap-3 p-4 rounded-md shadow-lg text-white animate-fade-in w-full max-w-sm';
@@ -129,7 +131,8 @@ const NotificationContainer = ({ notifications }: { notifications: Notification[
     );
 };
 
-const NotificationProvider = ({ children }: { children: ReactNode }) => {
+// Fix: Changed component to React.FC to correctly handle children prop.
+const NotificationProvider: React.FC = ({ children }) => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
 
     const addNotification = (message: string, type: NotificationType) => {
@@ -150,34 +153,29 @@ const NotificationProvider = ({ children }: { children: ReactNode }) => {
 };
 
 // --- AUTH PROVIDER --- //
-const AuthProvider = ({ children }: { children: ReactNode }) => {
+// Fix: Changed component to React.FC to correctly handle children prop.
+const AuthProvider: React.FC = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
     useEffect(() => {
-        const checkSession = async () => {
-            if (!supabase) return;
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                const profile = await ApiService.getUser(session.user.id);
-                setUser(profile);
-            }
-        };
-        checkSession();
+        if (!supabase) return;
 
-        const { data: authListener } = supabase?.auth.onAuthStateChange(
+        // onAuthStateChange is called upon initial load, sign in, sign out, etc.
+        // It's the single source of truth for the user's auth state and prevents logout on refresh.
+        const { data: authListener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                if (event === 'SIGNED_IN' && session) {
+                if (session) {
                     const profile = await ApiService.getUser(session.user.id);
                     setUser(profile);
-                } else if (event === 'SIGNED_OUT') {
+                } else {
                     setUser(null);
                 }
             }
-        ) as { data: { subscription: { unsubscribe: () => void } } };
+        );
 
         return () => {
-            authListener?.subscription?.unsubscribe();
+            authListener?.subscription.unsubscribe();
         };
     }, []);
 
@@ -1236,7 +1234,8 @@ const ProfilePage = () => {
     const canViewBookmarks = isOwner || (profileUser.showBookmarks ?? false);
     const canViewLikes = isOwner || (profileUser.showLikes ?? false);
 
-    const TabButton = ({ tab, currentTab, children }: { tab: typeof activeTab, currentTab: typeof activeTab, children: ReactNode }) => (
+    // Fix: Replaced `typeof activeTab` with the explicit string literal union type to avoid incorrect type inference.
+    const TabButton = ({ tab, currentTab, children }: { tab: 'creations' | 'bookmarks' | 'likes', currentTab: 'creations' | 'bookmarks' | 'likes', children: ReactNode }) => (
         <button 
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 font-semibold border-b-2 transition-colors ${tab === currentTab ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
@@ -2148,7 +2147,8 @@ const EditChapterPage = () => {
         setContent(e.target.value);
     };
 
-    const TabButton = ({ isActive, onClick, children }: { isActive: boolean, onClick: () => void, children: ReactNode }) => (
+    // Fix: Changed component to React.FC to correctly handle children prop.
+    const TabButton: React.FC<{ isActive: boolean, onClick: () => void }> = ({ isActive, onClick, children }) => (
         <button
             type="button"
             onClick={onClick}
@@ -2297,8 +2297,8 @@ const SettingsPage = () => {
                 addNotification(`Error: ${error.message}`, 'error');
             } else {
                 addNotification('Successfully logged out from all devices.', 'success');
-                logout(); // Also log out from current session
-                navigate('/');
+                // The onAuthStateChange listener in AuthProvider will handle state updates,
+                // which will then trigger the automatic navigation in this component's useEffect.
             }
         }
     };
@@ -2392,7 +2392,8 @@ const SettingsPage = () => {
 
 // --- APP LAYOUT & ROUTING --- //
 
-const Layout = ({ children }: { children: ReactNode }) => (
+// Fix: Changed component to React.FC to correctly handle children prop.
+const Layout: React.FC = ({ children }) => (
     <div className="flex flex-col min-h-screen font-sans text-light-text dark:text-dark-text">
         <Header />
         <main className="flex-grow">{children}</main>

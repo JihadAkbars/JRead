@@ -164,49 +164,68 @@ const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
         let isMounted = true;
 
-        const fetchUserAndProfile = async (sessionUser: import('@supabase/supabase-js').User | null) => {
-            if (!sessionUser) {
-                if (isMounted) setUser(null);
-                return;
-            }
+        const checkSessionAndSetUser = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
 
-            const profile = await ApiService.getUser(sessionUser.id);
-            if (isMounted) {
-                if (profile) {
-                    setUser(profile);
-                } else {
-                    // Fallback for when a user exists in auth but not in our profiles table.
-                    // This can happen if the DB trigger for profile creation is missing or failed.
-                    console.warn(`No profile found for user ${sessionUser.id}. Using fallback data from session.`);
-                    setUser({
-                        id: sessionUser.id,
-                        email: sessionUser.email ?? '',
-                        username: sessionUser.user_metadata.username || sessionUser.email?.split('@')[0] || 'New User',
-                        role: sessionUser.user_metadata.role || UserRole.USER,
-                        profilePicture: sessionUser.user_metadata.profile_picture || `https://api.dicebear.com/8.x/initials/svg?seed=${sessionUser.id}`,
-                        penName: sessionUser.user_metadata.pen_name,
-                        bio: sessionUser.user_metadata.bio,
-                    });
+                if (session?.user && isMounted) {
+                    const profile = await ApiService.getUser(session.user.id);
+                    if (isMounted) {
+                        if (profile) {
+                            setUser(profile);
+                        } else {
+                            console.warn(`No profile found for user ${session.user.id}. Using fallback data.`);
+                            setUser({
+                                id: session.user.id,
+                                email: session.user.email ?? '',
+                                username: session.user.user_metadata.username || session.user.email?.split('@')[0] || 'New User',
+                                role: session.user.user_metadata.role || UserRole.USER,
+                                profilePicture: session.user.user_metadata.profile_picture || `https://api.dicebear.com/8.x/initials/svg?seed=${session.user.id}`,
+                                penName: session.user.user_metadata.pen_name,
+                                bio: session.user.user_metadata.bio,
+                            });
+                        }
+                    }
+                } else if (isMounted) {
+                    setUser(null);
                 }
+            } catch (e) {
+                console.error("Error fetching session:", e);
+                if (isMounted) setUser(null);
+            } finally {
+                // This is the crucial part: always set loading to false.
+                if (isMounted) setIsLoading(false);
             }
         };
 
-        const initialize = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            // Once session is checked, we are done with initial loading.
-            if (isMounted) setIsLoading(false);
-            // Now, fetch the profile if a session exists.
-            await fetchUserAndProfile(session?.user || null);
-        };
+        checkSessionAndSetUser();
 
-        initialize();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (_event, session) => {
-                // On auth change (login/logout), fetch the new user profile.
-                await fetchUserAndProfile(session?.user || null);
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            if (!isMounted) return;
+            
+            if (session?.user) {
+                 const profile = await ApiService.getUser(session.user.id);
+                 if (isMounted) {
+                    if (profile) {
+                        setUser(profile);
+                    } else {
+                        // This case is less likely here but good to have for robustness
+                        console.warn(`No profile found for user ${session.user.id} after auth state change. Using fallback data.`);
+                        setUser({
+                            id: session.user.id,
+                            email: session.user.email ?? '',
+                            username: session.user.user_metadata.username || session.user.email?.split('@')[0] || 'New User',
+                            role: session.user.user_metadata.role || UserRole.USER,
+                            profilePicture: session.user.user_metadata.profile_picture || `https://api.dicebear.com/8.x/initials/svg?seed=${session.user.id}`,
+                            penName: session.user.user_metadata.pen_name,
+                            bio: session.user.user_metadata.bio,
+                        });
+                    }
+                 }
+            } else {
+                setUser(null);
             }
-        );
+        });
 
         return () => {
             isMounted = false;

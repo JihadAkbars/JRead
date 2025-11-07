@@ -10,7 +10,7 @@ import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, A
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  isLoading: boolean;
+  authReady: boolean;
   login: (email: string, pass: string) => Promise<boolean>;
   signup: (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string) => Promise<{ success: boolean; message: string; }>;
   logout: () => Promise<void>;
@@ -153,12 +153,12 @@ const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 // --- AUTH PROVIDER --- //
 const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [authReady, setAuthReady] = useState(false);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
     useEffect(() => {
         if (!supabase) {
-            setIsLoading(false);
+            setAuthReady(true);
             return;
         }
 
@@ -193,8 +193,7 @@ const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
                 console.error("Error fetching session:", e);
                 if (isMounted) setUser(null);
             } finally {
-                // This is the crucial part: always set loading to false.
-                if (isMounted) setIsLoading(false);
+                if (isMounted) setAuthReady(true);
             }
         };
 
@@ -209,7 +208,6 @@ const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
                     if (profile) {
                         setUser(profile);
                     } else {
-                        // This case is less likely here but good to have for robustness
                         console.warn(`No profile found for user ${session.user.id} after auth state change. Using fallback data.`);
                         setUser({
                             id: session.user.id,
@@ -292,7 +290,7 @@ const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const value: AuthContextType = {
         user,
         isAuthenticated: !!user,
-        isLoading,
+        authReady,
         login,
         signup,
         logout,
@@ -1654,6 +1652,16 @@ const ChangelogPage = () => {
 }
 
 // --- AUTHORING, SEARCH, & SETTINGS PAGES --- //
+const PageLoader: React.FC<{ message?: string }> = ({ message = "Loading..."}) => (
+    <div className="flex items-center justify-center h-full min-h-[60vh]">
+        <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span className="ml-4 text-lg font-semibold text-gray-700 dark:text-gray-300">{message}</span>
+    </div>
+);
+
 
 const SearchResultsPage = () => {
     const [searchParams] = useSearchParams();
@@ -1694,7 +1702,7 @@ const SearchResultsPage = () => {
 };
 
 const MyWorksPage = () => {
-    const { user } = useAuth();
+    const { user, authReady } = useAuth();
     const { removeNovelFromList } = useNovels();
     const { addNotification } = useNotification();
     const navigate = useNavigate();
@@ -1702,6 +1710,8 @@ const MyWorksPage = () => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        if (!authReady) return;
+        
         if (!user || (user.role !== UserRole.AUTHOR && user.role !== UserRole.ADMIN && user.role !== UserRole.OWNER)) {
             navigate('/');
             return;
@@ -1720,7 +1730,7 @@ const MyWorksPage = () => {
         };
 
         fetchMyNovels();
-    }, [user, navigate]);
+    }, [user, authReady, navigate]);
     
     const handleDeleteNovel = async (novelId: string) => {
         if (window.confirm('Are you sure you want to permanently delete this novel and all its chapters? This cannot be undone.')) {
@@ -1735,7 +1745,7 @@ const MyWorksPage = () => {
         }
     };
 
-    if (isLoading) return <div className="text-center py-10">Loading your works...</div>;
+    if (!authReady || isLoading) return <PageLoader message="Loading your works..." />;
     
     return (
         <div className="container mx-auto px-4 py-8">
@@ -1784,7 +1794,7 @@ const MyWorksPage = () => {
 
 const EditNovelPage = () => {
     const { novelId } = useParams();
-    const { user } = useAuth();
+    const { user, authReady } = useAuth();
     const navigate = useNavigate();
     const { updateNovelInList, addNovelToList } = useNovels();
     const [isEditMode, setIsEditMode] = useState(false);
@@ -1797,8 +1807,16 @@ const EditNovelPage = () => {
     const [coverImageUrl, setCoverImageUrl] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        if (!authReady) return;
+        
+        if (!user) {
+            navigate('/');
+            return;
+        }
+
         if (novelId) {
             setIsEditMode(true);
             const fetchNovel = async () => {
@@ -1813,10 +1831,13 @@ const EditNovelPage = () => {
                 } else {
                     navigate('/my-works'); // Not found or not owner
                 }
+                setIsLoading(false);
             };
             fetchNovel();
+        } else {
+            setIsLoading(false);
         }
-    }, [novelId, user, navigate]);
+    }, [novelId, user, authReady, navigate]);
 
     const handleCoverImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -1861,8 +1882,7 @@ const EditNovelPage = () => {
             } else {
                 const newNovel = await ApiService.addNovel(novelData as any);
                 if(newNovel) {
-                    // This is a simplified version; real app might need more user details
-                    addNovelToList({ ...newNovel, authorName: user.penName || user.username });
+                    addNovelToList({ ...newNovel, authorName: user.penName || user.username, chapters: [] });
                 }
             }
 
@@ -1874,6 +1894,8 @@ const EditNovelPage = () => {
         }
     };
     
+    if (!authReady || isLoading) return <PageLoader message="Loading novel editor..."/>
+
     return (
         <div className="container mx-auto px-4 py-8">
             <div className="max-w-3xl mx-auto bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-md">
@@ -1935,25 +1957,33 @@ const EditNovelPage = () => {
 
 const ManageChaptersPage = () => {
     const { novelId } = useParams();
-    const { user } = useAuth();
+    const { user, authReady } = useAuth();
     const { addNotification } = useNotification();
     const navigate = useNavigate();
     const [novel, setNovel] = useState<Novel | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
     const fetchNovel = async () => {
-        if (novelId) {
+        if (novelId && user) {
             const novelData = await ApiService.getNovel(novelId);
-            if (novelData && user && novelData.authorId === user.id) {
+            if (novelData && novelData.authorId === user.id) {
                 setNovel(novelData);
             } else {
                 navigate('/my-works');
             }
         }
+        setIsLoading(false);
     };
 
     useEffect(() => {
-        fetchNovel();
-    }, [novelId, user, navigate]);
+        if (authReady) {
+            if (user) {
+                fetchNovel();
+            } else {
+                navigate('/');
+            }
+        }
+    }, [novelId, user, authReady, navigate]);
 
     const handleDeleteChapter = async (chapterId: string) => {
         if (window.confirm('Are you sure you want to delete this chapter?')) {
@@ -1967,7 +1997,8 @@ const ManageChaptersPage = () => {
         }
     };
     
-    if (!novel) return <div className="text-center py-10">Loading chapters...</div>;
+    if (!authReady || isLoading) return <PageLoader message="Loading chapters..."/>
+    if (!novel) return <div className="text-center py-10">Novel not found or you do not have permission to view this page.</div>;
 
     return (
         <div className="container mx-auto px-4 py-8">
@@ -2017,7 +2048,7 @@ const ManageChaptersPage = () => {
 
 const EditChapterPage = () => {
     const { novelId, chapterId: chapterIdFromParams } = useParams();
-    const { user } = useAuth();
+    const { user, authReady } = useAuth();
     const navigate = useNavigate();
 
     const [isEditMode, setIsEditMode] = useState(false);
@@ -2033,9 +2064,12 @@ const EditChapterPage = () => {
     const contentRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
+        if (!authReady) return;
+        if (!user) { navigate('/my-works'); return; }
+
         setIsEditMode(!!chapterIdFromParams);
         const loadData = async () => {
-            if (!novelId || !user) { navigate('/my-works'); return; }
+            if (!novelId) { navigate('/my-works'); return; }
             setIsLoading(true);
             try {
                 const novelData = await ApiService.getNovel(novelId);
@@ -2062,7 +2096,7 @@ const EditChapterPage = () => {
             }
         };
         loadData();
-    }, [novelId, chapterIdFromParams, user, navigate]);
+    }, [novelId, chapterIdFromParams, user, authReady, navigate]);
 
     useEffect(() => {
         if (isLoading || saveStatus !== 'dirty') {
@@ -2178,7 +2212,7 @@ const EditChapterPage = () => {
         });
     };
     
-    if (isLoading) return <div className="text-center py-10">Loading...</div>;
+    if (!authReady || isLoading) return <PageLoader message="Loading chapter editor..."/>
 
     const SaveStatusIndicator = () => {
         let text = '';
@@ -2273,7 +2307,7 @@ const EditChapterPage = () => {
 };
 
 const SettingsPage = () => {
-    const { user, updateCurrentUser, logout, resetPassword, logoutFromAllDevices } = useAuth();
+    const { user, authReady, updateCurrentUser, logout, resetPassword, logoutFromAllDevices } = useAuth();
     const { addNotification } = useNotification();
     const navigate = useNavigate();
 
@@ -2286,18 +2320,22 @@ const SettingsPage = () => {
     const [isSaving, setIsSaving] = useState(false);
     
     useEffect(() => {
-        if (user) {
-            setPenName(user.penName || '');
-            setBio(user.bio || '');
-            setProfilePictureUrl(user.profilePicture);
-            setShowBookmarks(user.showBookmarks ?? true);
-            setShowLikes(user.showLikes ?? true);
-        } else {
-            navigate('/');
+        if (authReady) {
+            if (user) {
+                setPenName(user.penName || '');
+                setBio(user.bio || '');
+                setProfilePictureUrl(user.profilePicture);
+                setShowBookmarks(user.showBookmarks ?? true);
+                setShowLikes(user.showLikes ?? true);
+            } else {
+                navigate('/');
+            }
         }
-    }, [user, navigate]);
+    }, [user, authReady, navigate]);
 
-    if (!user) return null;
+    if (!authReady || !user) {
+        return <PageLoader message="Loading settings..." />;
+    }
 
     const handlePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -2454,20 +2492,6 @@ const Layout: React.FC<{ children: ReactNode }> = ({ children }) => (
 );
 
 const AppRouter = () => {
-    const { isLoading } = useAuth();
-
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-screen bg-light-bg dark:bg-dark-bg">
-                <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span className="ml-4 text-lg font-semibold text-gray-700 dark:text-gray-300">Loading J Read...</span>
-            </div>
-        );
-    }
-
     return (
         <Layout>
             <Routes>

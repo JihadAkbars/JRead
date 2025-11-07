@@ -162,20 +162,36 @@ const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
             return;
         }
 
+        // This function will be called by the listener and on initial load
+        const updateUserState = async (session: import('@supabase/supabase-js').Session | null) => {
+            if (session) {
+                const profile = await ApiService.getUser(session.user.id);
+                setUser(profile);
+            } else {
+                setUser(null);
+            }
+        };
+
+        // Check the initial session state when the app loads
+        const initializeSession = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                await updateUserState(session);
+            } catch (error) {
+                console.error("Error during session initialization:", error);
+                setUser(null); // Ensure user is null on error
+            } finally {
+                // This is crucial: always set loading to false after the initial check.
+                setIsLoading(false);
+            }
+        };
+
+        initializeSession();
+
+        // Listen for subsequent auth state changes
         const { data: authListener } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
-                try {
-                    if (session) {
-                        const profile = await ApiService.getUser(session.user.id);
-                        setUser(profile);
-                    } else {
-                        setUser(null);
-                    }
-                } catch (error) {
-                    console.error("Error in auth state change handler:", error);
-                } finally {
-                    setIsLoading(false);
-                }
+            async (_event, session) => {
+                await updateUserState(session);
             }
         );
 

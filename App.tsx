@@ -15,6 +15,8 @@ interface AuthContextType {
   logout: () => void;
   showAuthModal: () => void;
   updateCurrentUser: (updates: Partial<User>) => void;
+  resetPassword: (email: string) => Promise<{ error: any }>;
+  logoutFromAllDevices: () => Promise<{ error: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -41,7 +43,6 @@ export const useNovels = () => {
     return context;
 };
 
-// FIX: Moved NovelsProvider outside of App component to prevent re-rendering issues and fix context bugs.
 const NovelsProvider = ({ children }: { children: ReactNode }) => {
     const [novels, setNovels] = useState<Novel[]>([]);
     const [loading, setLoading] = useState(true);
@@ -148,6 +149,114 @@ const NotificationProvider = ({ children }: { children: ReactNode }) => {
     );
 };
 
+// --- AUTH PROVIDER --- //
+const AuthProvider = ({ children }: { children: ReactNode }) => {
+    const [user, setUser] = useState<User | null>(null);
+    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+    useEffect(() => {
+        const checkSession = async () => {
+            if (!supabase) return;
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                const profile = await ApiService.getUser(session.user.id);
+                setUser(profile);
+            }
+        };
+        checkSession();
+
+        const { data: authListener } = supabase?.auth.onAuthStateChange(
+            async (event, session) => {
+                if (event === 'SIGNED_IN' && session) {
+                    const profile = await ApiService.getUser(session.user.id);
+                    setUser(profile);
+                } else if (event === 'SIGNED_OUT') {
+                    setUser(null);
+                }
+            }
+        ) as { data: { subscription: { unsubscribe: () => void } } };
+
+        return () => {
+            authListener?.subscription?.unsubscribe();
+        };
+    }, []);
+
+    const login = async (email: string, pass: string) => {
+        if (!supabase) return false;
+        const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+        return !error;
+    };
+
+    const signup = async (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string) => {
+        if (!supabase) return { success: false, message: "Database not configured." };
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password: pass,
+            options: {
+                data: {
+                    username,
+                    role,
+                    pen_name: penName,
+                    bio,
+                    profile_picture: `https://api.dicebear.com/8.x/initials/svg?seed=${username}`,
+                }
+            }
+        });
+        if (error) {
+            return { success: false, message: error.message };
+        }
+        if (data.user && !data.session) {
+             return { success: true, message: "Please check your email for a confirmation link." };
+        }
+        return { success: true, message: "Account created successfully!" };
+    };
+
+    const logout = async () => {
+        if (!supabase) return;
+        await supabase.auth.signOut();
+    };
+    
+    const logoutFromAllDevices = async () => {
+        if (!supabase) return { error: new Error('Supabase client not available') };
+        const { error } = await supabase.auth.signOut({ scope: 'global' });
+        return { error };
+    };
+    
+    const resetPassword = async (email: string) => {
+        if (!supabase) return { error: new Error('Supabase client not available') };
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: window.location.origin,
+        });
+        return { error };
+    };
+
+    const updateCurrentUser = (updates: Partial<User>) => {
+        setUser(currentUser => {
+            if (!currentUser) return null;
+            return { ...currentUser, ...updates };
+        });
+    };
+
+    const value: AuthContextType = {
+        user,
+        isAuthenticated: !!user,
+        login,
+        signup,
+        logout,
+        showAuthModal: () => setIsAuthModalOpen(true),
+        updateCurrentUser,
+        resetPassword,
+        logoutFromAllDevices,
+    };
+
+    return (
+        <AuthContext.Provider value={value}>
+            {children}
+            <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+        </AuthContext.Provider>
+    );
+};
+
 // --- UI HELPER COMPONENTS --- //
 type ButtonProps = ComponentPropsWithoutRef<'button'> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -228,7 +337,7 @@ const NovelCard: React.FC<{ novel: Novel }> = ({ novel }) => {
   return (
     <Link to={`/novel/${novel.id}`} className="group block bg-light-surface dark:bg-dark-surface rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300">
       <div className="relative aspect-[512/800] bg-gray-200 dark:bg-gray-700">
-        <img src={novel.coverImage} alt={novel.title} className="w-full h-full object-cover" />
+        <img src={novel.coverImage} alt={novel.title} className="w-full h-full object-cover" loading="lazy" />
         <div className="absolute inset-0 bg-black bg-opacity-20 group-hover:bg-opacity-40 transition-all duration-300"></div>
       </div>
       <div className="p-4">
@@ -505,6 +614,7 @@ const Footer = () => {
     <footer className="bg-light-surface dark:bg-dark-surface mt-auto py-6">
       <div className="container mx-auto px-4 text-center text-gray-500 dark:text-gray-400">
         <div className="flex justify-center items-center gap-4 mb-2">
+          <Link to="/about" className="hover:text-primary">About</Link>
           <Link to="/contact" className="hover:text-primary">Contact</Link>
           <Link to="/changelog" className="hover:text-primary">Changelog</Link>
         </div>
@@ -516,6 +626,30 @@ const Footer = () => {
 
 
 // --- PAGES --- //
+const AboutPage = () => {
+    return (
+        <div className="container mx-auto px-4 py-8">
+            <div className="max-w-3xl mx-auto bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-md">
+                <h1 className="text-3xl font-bold mb-6 text-center">About J Read</h1>
+                <div className="space-y-4 text-gray-700 dark:text-gray-300 leading-relaxed">
+                    <p>
+                        J Read is a website that provides services for creating and reading novels, both fiction and non-fiction.
+                        The website was founded and is independently developed by Jhdz (Jihad).
+                    </p>
+                    <p>
+                        Currently, J Read is still in the development stage — both in terms of visual design and backend systems.
+                        If you encounter any bugs, errors, or other issues, please don’t hesitate to report them through the <Link to="/contact" className="text-primary hover:underline font-semibold">Contact page</Link>.
+                        I’ll do my best to fix them as quickly and efficiently as possible.
+                    </p>
+                    <p>
+                        Thank you for supporting and using J Read!
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const HomePage = () => {
   const { novels, loading } = useNovels();
   const [displayNovels, setDisplayNovels] = useState<Novel[]>([]);
@@ -680,20 +814,18 @@ const NovelDetailPage = () => {
         if (!novel) return;
 
         const originalBookmarkState = isBookmarked;
-        setIsBookmarked(!originalBookmarkState); // Optimistic update
+        const newBookmarkState = !originalBookmarkState;
+        setIsBookmarked(newBookmarkState); // Optimistic update
         
         try {
-            const result = !originalBookmarkState
+            const result = newBookmarkState
                 ? await ApiService.addBookmark(user.id, novel.id)
                 : await ApiService.removeBookmark(user.id, novel.id);
             
             if (!result.success) {
                 throw new Error('API call failed');
             }
-            
-            if (!originalBookmarkState) {
-                addNotification("Novel has been bookmarked! See it on your profile.", 'success');
-            }
+            addNotification(newBookmarkState ? 'Novel bookmarked!' : 'Bookmark removed.', 'success');
 
         } catch (error) {
             console.error("Failed to toggle bookmark", error);
@@ -724,6 +856,7 @@ const NovelDetailPage = () => {
             if (!result.success) {
                 throw new Error('API call failed');
             }
+            addNotification(newLikedState ? 'Novel liked!' : 'Like removed.', 'success');
         } catch (error) {
             console.error("Failed to toggle like", error);
             // Revert on failure
@@ -742,6 +875,7 @@ const NovelDetailPage = () => {
          
          const { success } = await ApiService.submitRating(novel.id, user.id, rating);
          if (success) {
+            addNotification(`You rated this novel ${rating} stars!`, 'success');
             // Refetch novel to get updated average rating from the DB trigger
             const updatedNovel = await ApiService.getNovel(novel.id);
             if (updatedNovel) {
@@ -750,6 +884,7 @@ const NovelDetailPage = () => {
             }
          } else {
             setUserRating(oldUserRating); // Revert on failure
+            addNotification('Could not submit rating. Please try again.', 'error');
          }
     };
 
@@ -765,7 +900,7 @@ const NovelDetailPage = () => {
         <div className="container mx-auto px-4 py-8">
             <div className="flex flex-col md:flex-row gap-8">
                 <div className="md:w-1/3 flex-shrink-0">
-                    <img src={novel.coverImage} alt={novel.title} className="w-full rounded-lg shadow-lg aspect-[512/800] object-cover"/>
+                    <img src={novel.coverImage} alt={novel.title} className="w-full rounded-lg shadow-lg aspect-[512/800] object-cover" loading="lazy"/>
                 </div>
                 <div className="md:w-2/3">
                     <h1 className="text-4xl font-bold text-light-text dark:text-dark-text">{novel.title}</h1>
@@ -968,7 +1103,6 @@ const ProfilePage = () => {
                 return;
             }
             setIsLoading(true);
-            setActiveTab('creations'); // Reset tab on user change
 
             try {
                 const user = await ApiService.getUser(userId);
@@ -977,10 +1111,11 @@ const ProfilePage = () => {
                 if (user) {
                     const isAuthor = user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN || user.role === UserRole.OWNER;
                     if (isAuthor) {
+                        setActiveTab('creations');
                         const novels = await ApiService.getNovelsByAuthor(user.id);
                         setUserNovels(novels);
                     } else {
-                        setUserNovels([]);
+                        setActiveTab('bookmarks');
                     }
                     const bookmarks = await ApiService.getBookmarkedNovels(user.id);
                     setBookmarkedNovels(bookmarks);
@@ -1027,7 +1162,7 @@ const ProfilePage = () => {
         <div className="container mx-auto p-4 md:p-8">
             <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-lg p-8 mb-8">
                 <div className="flex flex-col md:flex-row items-center gap-8">
-                    <img src={profileUser.profilePicture} alt="Profile" className="w-32 h-32 rounded-full ring-4 ring-primary object-cover"/>
+                    <img src={profileUser.profilePicture} alt="Profile" className="w-32 h-32 rounded-full ring-4 ring-primary object-cover" loading="lazy" />
                     <div className="flex-grow text-center md:text-left">
                         <div className="flex items-center justify-center md:justify-start gap-4">
                             <h1 className="text-3xl font-bold">{profileUser.penName || profileUser.username}</h1>
@@ -1230,10 +1365,12 @@ const ChangelogFormModal = ({ isOpen, onClose, onSubmit, initialData }: {
                     <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
                         {changes.map((change, index) => (
                             <div key={index} className="flex items-center gap-2">
-                                <Select value={change.type} onChange={e => handleChangesChange(index, 'type', e.target.value)} className="w-32">
+                                <Select value={change.type} onChange={e => handleChangesChange(index, 'type', e.target.value)} className="w-40">
                                     <option value="NEW">NEW</option>
                                     <option value="IMPROVED">IMPROVED</option>
                                     <option value="FIXED">FIXED</option>
+                                    <option value="BUG">BUG</option>
+                                    <option value="COMING_SOON">COMING SOON</option>
                                 </Select>
                                 <Input type="text" placeholder="Change description..." value={change.text} onChange={e => handleChangesChange(index, 'text', e.target.value)} className="flex-grow" />
                                 <Button type="button" variant="danger" onClick={() => removeChange(index)} className="!p-2">
@@ -1259,8 +1396,10 @@ const ChangelogTag = ({ type }: { type: string }) => {
         NEW: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
         IMPROVED: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
         FIXED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+        BUG: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+        COMING_SOON: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
     };
-    return <span className={`inline-block mr-2 px-2.5 py-0.5 rounded-full text-xs font-semibold ${styles[type] || 'bg-gray-200 text-gray-800'}`}>{type}</span>;
+    return <span className={`inline-block mr-2 px-2.5 py-0.5 rounded-full text-xs font-semibold ${styles[type] || 'bg-gray-200 text-gray-800'}`}>{type.replace('_', ' ')}</span>;
 };
 
 
@@ -1366,7 +1505,7 @@ const ChangelogPage = () => {
     );
 }
 
-// --- AUTHORING & SEARCH PAGES --- //
+// --- AUTHORING, SEARCH, & SETTINGS PAGES --- //
 
 const SearchResultsPage = () => {
     const [searchParams] = useSearchParams();
@@ -1409,6 +1548,7 @@ const SearchResultsPage = () => {
 const MyWorksPage = () => {
     const { user } = useAuth();
     const { removeNovelFromList } = useNovels();
+    const { addNotification } = useNotification();
     const navigate = useNavigate();
     const [myNovels, setMyNovels] = useState<Novel[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -1440,8 +1580,9 @@ const MyWorksPage = () => {
             if (success) {
                 setMyNovels(prev => prev.filter(n => n.id !== novelId));
                 removeNovelFromList(novelId);
+                addNotification('Novel deleted successfully.', 'success');
             } else {
-                alert('Failed to delete the novel.');
+                addNotification('Failed to delete the novel.', 'error');
             }
         }
     };
@@ -1463,7 +1604,7 @@ const MyWorksPage = () => {
                     {myNovels.map(novel => (
                         <div key={novel.id} className="bg-light-surface dark:bg-dark-surface p-4 rounded-lg shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
                             <div className="flex items-center gap-4 w-full sm:w-auto">
-                                <img src={novel.coverImage} alt={novel.title} className="w-16 h-24 object-cover rounded-md flex-shrink-0"/>
+                                <img src={novel.coverImage} alt={novel.title} className="w-16 h-24 object-cover rounded-md flex-shrink-0" loading="lazy"/>
                                 <div className="flex-grow">
                                     <h2 className="text-xl font-bold">{novel.title}</h2>
                                     <p className="text-sm text-gray-500 capitalize">{novel.status}</p>
@@ -1596,7 +1737,7 @@ const EditNovelPage = () => {
                             <label htmlFor="cover-image" className="block text-sm font-medium mb-1">Cover Image</label>
                             <div className="aspect-[512/800] bg-gray-200 dark:bg-gray-700 rounded-md flex items-center justify-center relative overflow-hidden group">
                                 {coverImageUrl ? (
-                                    <img src={coverImageUrl} alt="Cover preview" className="w-full h-full object-cover" />
+                                    <img src={coverImageUrl} alt="Cover preview" className="w-full h-full object-cover" loading="lazy" />
                                 ) : (
                                     <span className="text-gray-500 text-sm p-4 text-center">Click to upload</span>
                                 )}
@@ -1647,6 +1788,7 @@ const EditNovelPage = () => {
 const ManageChaptersPage = () => {
     const { novelId } = useParams();
     const { user } = useAuth();
+    const { addNotification } = useNotification();
     const navigate = useNavigate();
     const [novel, setNovel] = useState<Novel | null>(null);
 
@@ -1669,9 +1811,10 @@ const ManageChaptersPage = () => {
         if (window.confirm('Are you sure you want to delete this chapter?')) {
             const { success } = await ApiService.deleteChapter(chapterId);
             if (success) {
+                addNotification('Chapter deleted successfully.', 'success');
                 fetchNovel();
             } else {
-                alert('Failed to delete chapter.');
+                addNotification('Failed to delete chapter.', 'error');
             }
         }
     };
@@ -1942,48 +2085,38 @@ const EditChapterPage = () => {
                         <div className="border border-gray-300 dark:border-gray-600 rounded-md">
                              <div className="flex border-b border-gray-300 dark:border-gray-600">
                                 <TabButton isActive={activeTab === 'write'} onClick={() => setActiveTab('write')}>Write</TabButton>
-                                <TabButton isActive={activeTab === 'preview'} onClick={() => setActiveTab('preview')}>Preview</TabButton>
-                            </div>
+                                <TabButton isActive={activeTab === 'preview'} onClick={() => setActiveTab('preview')}>Preview</Button>
+                                <div className="flex-grow flex items-center justify-end px-3 gap-2">
+                                     <button type="button" onClick={() => applyFormat('bold')} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"><BoldIcon className="w-5 h-5"/></button>
+                                     <button type="button" onClick={() => applyFormat('italic')} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"><ItalicIcon className="w-5 h-5"/></button>
+                                     <button type="button" onClick={() => applyFormat('underline')} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"><UnderlineIcon className="w-5 h-5"/></button>
+                                </div>
+                             </div>
                             
                             {activeTab === 'write' ? (
-                                <>
-                                    <div className="flex items-center gap-1 p-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-600">
-                                        <button type="button" onClick={() => applyFormat('bold')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Bold">
-                                            <BoldIcon className="w-5 h-5"/>
-                                        </button>
-                                        <button type="button" onClick={() => applyFormat('italic')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Italic">
-                                            <ItalicIcon className="w-5 h-5"/>
-                                        </button>
-                                        <button type="button" onClick={() => applyFormat('underline')} className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700" title="Underline">
-                                            <UnderlineIcon className="w-5 h-5"/>
-                                        </button>
-                                    </div>
-                                    <TextArea 
-                                        id="chapter-content" 
-                                        rows={20} 
-                                        value={content} 
-                                        onChange={handleContentChange} 
-                                        required 
-                                        className="font-serif !border-0 !ring-0 !focus:ring-0 !rounded-t-none"
-                                        ref={contentRef}
-                                    />
-                                </>
+                                <TextArea 
+                                    ref={contentRef}
+                                    id="chapter-content" 
+                                    className="!rounded-t-none !border-0 min-h-[50vh] font-mono" 
+                                    value={content} 
+                                    onChange={handleContentChange} 
+                                    placeholder="Start writing your chapter here..."
+                                />
                             ) : (
-                                <div className="p-4 bg-gray-200 dark:bg-gray-700 min-h-[492px]">
-                                    <div 
-                                        className="prose dark:prose-invert max-w-none font-serif leading-loose whitespace-pre-line bg-light-bg dark:bg-dark-bg p-4 rounded-md"
-                                        dangerouslySetInnerHTML={{ __html: content || '<p class="text-gray-400 italic">Start writing in the "Write" tab to see a preview...</p>' }}
-                                    />
-                                </div>
+                                <div
+                                    className="p-4 min-h-[50vh] prose dark:prose-invert max-w-none font-serif leading-loose whitespace-pre-line"
+                                    dangerouslySetInnerHTML={{ __html: content }}
+                                />
                             )}
                         </div>
                     </div>
-                    <div className="flex justify-end items-center gap-4">
+
+                    <div className="flex justify-between items-center">
                         <SaveStatusIndicator />
-                        <Button variant="ghost" onClick={() => handleSubmit(false)} disabled={isSubmittingManual}>Save as Draft</Button>
-                        <Button variant="secondary" onClick={() => handleSubmit(true)} disabled={isSubmittingManual}>
-                            {isSubmittingManual ? 'Saving...' : (isEditMode ? 'Update & Publish' : 'Publish')}
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button type="button" variant="ghost" onClick={() => handleSubmit(false)} disabled={isSubmittingManual}>Save as Draft</Button>
+                            <Button type="button" onClick={() => handleSubmit(true)} disabled={isSubmittingManual}>Publish</Button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1992,34 +2125,33 @@ const EditChapterPage = () => {
 };
 
 const SettingsPage = () => {
-    const { user, updateCurrentUser, logout } = useAuth();
+    const { user, updateCurrentUser, logout, resetPassword, logoutFromAllDevices } = useAuth();
+    const { addNotification } = useNotification();
     const navigate = useNavigate();
 
     const [penName, setPenName] = useState('');
     const [bio, setBio] = useState('');
-    const [showBookmarks, setShowBookmarks] = useState(true);
-    const [showLikes, setShowLikes] = useState(true);
     const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
     const [profilePictureUrl, setProfilePictureUrl] = useState('');
+    const [showBookmarks, setShowBookmarks] = useState(true);
+    const [showLikes, setShowLikes] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
     
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [error, setError] = useState('');
-    const [successMessage, setSuccessMessage] = useState('');
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-
     useEffect(() => {
         if (user) {
             setPenName(user.penName || '');
             setBio(user.bio || '');
+            setProfilePictureUrl(user.profilePicture);
             setShowBookmarks(user.showBookmarks ?? true);
             setShowLikes(user.showLikes ?? true);
-            setProfilePictureUrl(user.profilePicture);
         } else {
             navigate('/');
         }
     }, [user, navigate]);
 
-    const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) return null;
+
+    const handlePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             setProfilePictureFile(file);
@@ -2027,473 +2159,188 @@ const SettingsPage = () => {
         }
     };
     
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleProfileSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
-        setIsSubmitting(true);
-        setError('');
-        setSuccessMessage('');
-
+        setIsSaving(true);
         try {
-            let finalProfilePictureUrl = profilePictureUrl;
+            let finalPictureUrl = user.profilePicture;
             if (profilePictureFile) {
                 const uploadedUrl = await ApiService.uploadProfilePicture(profilePictureFile);
                 if (!uploadedUrl) throw new Error('Profile picture upload failed.');
-                finalProfilePictureUrl = uploadedUrl;
+                finalPictureUrl = uploadedUrl;
             }
-
-            const updatedProfileData = {
-                penName,
-                bio,
-                showBookmarks,
-                showLikes,
-                profilePicture: finalProfilePictureUrl,
-            };
             
-            const updatedUser = await ApiService.updateUserProfile(user.id, updatedProfileData);
-
+            const updates: Partial<User> = { penName, bio, profilePicture: finalPictureUrl, showBookmarks, showLikes };
+            const updatedUser = await ApiService.updateUserProfile(user.id, updates);
+            
             if (updatedUser) {
                 updateCurrentUser(updatedUser);
-                setSuccessMessage('Profile updated successfully!');
+                addNotification('Profile updated successfully!', 'success');
             } else {
-                throw new Error('Failed to update profile on the server.');
+                throw new Error('Failed to update profile.');
             }
-
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+             addNotification(err instanceof Error ? err.message : 'An error occurred.', 'error');
         } finally {
-            setIsSubmitting(false);
+            setIsSaving(false);
         }
     };
-    
-    const handleDeleteAccount = async () => {
-        if (!user) return;
-        setIsSubmitting(true);
-        setError('');
 
-        const { success } = await ApiService.deleteUserAccount();
-
-        if (success) {
-            await logout();
-            navigate('/');
+    const handlePasswordReset = async () => {
+        const { error } = await resetPassword(user.email);
+        if (error) {
+            addNotification(`Error sending reset email: ${error.message}`, 'error');
         } else {
-            setError('Failed to delete your account. Please try again or contact support.');
-            setIsSubmitting(false);
-            setIsDeleteModalOpen(false);
+            addNotification('Password reset email sent! Please check your inbox.', 'success');
         }
     };
 
-    const isAuthor = user?.role === UserRole.AUTHOR || user?.role === UserRole.ADMIN || user?.role === UserRole.OWNER;
+    const handleLogoutAll = async () => {
+        if (window.confirm('Are you sure you want to log out from all devices?')) {
+            const { error } = await logoutFromAllDevices();
+            if (error) {
+                addNotification(`Error: ${error.message}`, 'error');
+            } else {
+                addNotification('Successfully logged out from all devices.', 'success');
+                logout(); // Also log out from current session
+                navigate('/');
+            }
+        }
+    };
 
-    const ToggleSwitch = ({ checked, onChange, label }: { checked: boolean, onChange: (checked: boolean) => void, label: string }) => (
-        <label className="flex items-center justify-between cursor-pointer">
-            <span className="text-light-text dark:text-dark-text">{label}</span>
-            <div className="relative">
-                <input type="checkbox" className="sr-only" checked={checked} onChange={e => onChange(e.target.checked)} />
-                <div className="block bg-gray-300 dark:bg-gray-600 w-14 h-8 rounded-full"></div>
-                <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${checked ? 'transform translate-x-6 bg-secondary' : ''}`}></div>
-            </div>
-        </label>
-    );
+    const handleDeleteAccount = async () => {
+        if (window.confirm('ARE YOU ABSOLUTELY SURE? This action cannot be undone and will permanently delete your account and all associated data.')) {
+            const { success } = await ApiService.deleteUserAccount();
+            if (success) {
+                addNotification('Account deleted successfully.', 'info');
+                logout();
+                navigate('/');
+            } else {
+                addNotification('Failed to delete account. Please contact support.', 'error');
+            }
+        }
+    };
 
     return (
         <div className="container mx-auto px-4 py-8">
-            <div className="max-w-2xl mx-auto bg-light-surface dark:bg-dark-surface p-8 rounded-lg shadow-md">
-                <h1 className="text-3xl font-bold mb-6">Settings</h1>
-                {error && <p className="text-red-500 text-center mb-4 bg-red-100 dark:bg-red-900/50 p-3 rounded-md">{error}</p>}
-                {successMessage && <p className="text-green-500 text-center mb-4 bg-green-100 dark:bg-green-900/50 p-3 rounded-md">{successMessage}</p>}
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="flex items-center gap-6">
-                        <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-primary/50 relative group">
-                            <img src={profilePictureUrl} alt="Profile preview" className="w-full h-full object-cover" />
-                            <label htmlFor="profile-picture" className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                                <span className="text-white text-sm font-semibold">Change</span>
-                            </label>
-                            <input id="profile-picture" type="file" accept="image/*" onChange={handleProfilePictureChange} className="hidden" />
+            <div className="max-w-3xl mx-auto space-y-8">
+                <h1 className="text-3xl font-bold text-center">Account Settings</h1>
+
+                {/* Profile Information Section */}
+                <form onSubmit={handleProfileSave} className="bg-light-surface dark:bg-dark-surface p-6 rounded-lg shadow-md">
+                    <h2 className="text-2xl font-semibold mb-4 border-b pb-2">Profile Information</h2>
+                    <div className="space-y-4">
+                         <div className="flex items-center gap-4">
+                            <img src={profilePictureUrl} alt="Profile Preview" className="w-20 h-20 rounded-full object-cover" />
+                            <div>
+                                <label htmlFor="profile-picture" className="block text-sm font-medium mb-1">Profile Picture</label>
+                                <input id="profile-picture" type="file" accept="image/*" onChange={handlePictureChange} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/20 file:text-primary hover:file:bg-primary/30"/>
+                            </div>
                         </div>
-                        <div className="flex-grow">
-                            <h2 className="text-xl font-bold">{user?.username}</h2>
-                            <p className="text-gray-500">{user?.email}</p>
+                        <div>
+                            <label htmlFor="penName" className="block text-sm font-medium mb-1">Pen Name</label>
+                            <Input id="penName" type="text" value={penName} onChange={e => setPenName(e.target.value)} />
+                        </div>
+                        <div>
+                            <label htmlFor="bio" className="block text-sm font-medium mb-1">Bio</label>
+                            <TextArea id="bio" value={bio} onChange={e => setBio(e.target.value)} rows={4} />
+                        </div>
+                         <div>
+                            <h3 className="text-lg font-semibold mb-2">Privacy</h3>
+                             <div className="space-y-2">
+                                <label className="flex items-center gap-2">
+                                    <input type="checkbox" checked={showBookmarks} onChange={e => setShowBookmarks(e.target.checked)} className="form-checkbox text-primary rounded focus:ring-primary"/>
+                                    <span>Show my bookmarked novels on my profile</span>
+                                </label>
+                                <label className="flex items-center gap-2">
+                                    <input type="checkbox" checked={showLikes} onChange={e => setShowLikes(e.target.checked)} className="form-checkbox text-primary rounded focus:ring-primary"/>
+                                    <span>Show my liked novels on my profile</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
-                    {isAuthor && (
-                      <div>
-                          <label htmlFor="penName" className="block text-sm font-medium mb-1">Pen Name</label>
-                          <Input id="penName" type="text" value={penName} onChange={e => setPenName(e.target.value)} />
-                      </div>
-                    )}
-                    <div>
-                        <label htmlFor="bio" className="block text-sm font-medium mb-1">Bio</label>
-                        <TextArea id="bio" rows={4} value={bio} onChange={e => setBio(e.target.value)} />
-                    </div>
-                    <div>
-                        <h3 className="text-lg font-bold mb-3">Privacy Settings</h3>
-                        <div className="space-y-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-md">
-                            <ToggleSwitch label="Show my bookmarked novels on my profile" checked={showBookmarks} onChange={setShowBookmarks} />
-                            <ToggleSwitch label="Show novels I've liked on my profile" checked={showLikes} onChange={setShowLikes} />
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                        <Button type="button" variant="ghost" onClick={() => navigate(`/user/${user?.id}`)}>Cancel</Button>
-                        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Changes'}</Button>
+                    <div className="text-right mt-6">
+                        <Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Changes'}</Button>
                     </div>
                 </form>
 
-                 <div className="mt-8 pt-6 border-t border-red-300 dark:border-red-800/50">
-                    <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-3">Danger Zone</h3>
-                    <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-md flex justify-between items-center">
-                        <div>
-                            <p className="font-semibold">Delete This Account</p>
-                            <p className="text-sm text-red-800/80 dark:text-red-300/80">Once you delete your account, there is no going back. Please be certain.</p>
+                {/* Account Security Section */}
+                <div className="bg-light-surface dark:bg-dark-surface p-6 rounded-lg shadow-md">
+                     <h2 className="text-2xl font-semibold mb-4 border-b pb-2">Account Security</h2>
+                     <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <p>Reset your password via email.</p>
+                            <Button onClick={handlePasswordReset}>Send Reset Link</Button>
                         </div>
-                        <Button variant="danger" onClick={() => setIsDeleteModalOpen(true)}>
-                            Delete Account
-                        </Button>
-                    </div>
+                         <div className="flex justify-between items-center">
+                            <p>Sign out from all other active sessions.</p>
+                            <Button onClick={handleLogoutAll}>Logout All Devices</Button>
+                        </div>
+                     </div>
+                </div>
+
+                 {/* Danger Zone Section */}
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 p-6 rounded-lg shadow-md">
+                     <h2 className="text-2xl font-semibold text-red-700 dark:text-red-400 mb-4 border-b border-red-300 dark:border-red-700 pb-2">Danger Zone</h2>
+                     <div className="flex justify-between items-center">
+                        <div>
+                           <p className="font-semibold">Delete your account</p>
+                           <p className="text-sm text-red-600 dark:text-red-400">Permanently delete your account and all of your content.</p>
+                        </div>
+                        <Button variant="danger" onClick={handleDeleteAccount}>Delete Account</Button>
+                     </div>
                 </div>
             </div>
-            
-            <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)}>
-                <h2 className="text-2xl font-bold text-red-600 mb-4">Are you absolutely sure?</h2>
-                <p className="text-light-text dark:text-dark-text mb-4">
-                    This action cannot be undone. This will permanently delete your account, novels, chapters, and all other associated data.
-                </p>
-                <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="ghost" onClick={() => setIsDeleteModalOpen(false)} disabled={isSubmitting}>
-                        Cancel
-                    </Button>
-                    <Button variant="danger" onClick={handleDeleteAccount} disabled={isSubmitting}>
-                        {isSubmitting ? 'Deleting...' : 'Yes, Delete My Account'}
-                    </Button>
-                </div>
-            </Modal>
-
         </div>
     );
-};
+}
 
-const AdminPanelPage = () => {
-    const { user: currentUser } = useAuth();
-    const { removeNovelFromList } = useNovels();
-    const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'users' | 'novels'>('users');
-    const [users, setUsers] = useState<User[]>([]);
-    const [isUsersLoading, setIsUsersLoading] = useState(true);
-    const [userError, setUserError] = useState('');
-    const [novels, setNovels] = useState<Novel[]>([]);
-    const [isNovelsLoading, setIsNovelsLoading] = useState(true);
-    const [novelError, setNovelError] = useState('');
+// --- APP LAYOUT & ROUTING --- //
 
-    useEffect(() => {
-        if (!currentUser || (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.OWNER)) {
-            navigate('/');
-            return;
-        }
+const Layout = ({ children }: { children: ReactNode }) => (
+    <div className="flex flex-col min-h-screen font-sans text-light-text dark:text-dark-text">
+        <Header />
+        <main className="flex-grow">{children}</main>
+        <Footer />
+    </div>
+);
 
-        const fetchAllData = async () => {
-            setIsUsersLoading(true);
-            setIsNovelsLoading(true);
-            try {
-                const [allUsers, allNovels] = await Promise.all([
-                    ApiService.getUsers(),
-                    ApiService.getNovels(),
-                ]);
-                setUsers(allUsers);
-                setNovels(allNovels);
-            } catch (err) {
-                setUserError('Failed to fetch data.');
-                setNovelError('Failed to fetch data.');
-                console.error(err);
-            } finally {
-                setIsUsersLoading(false);
-                setIsNovelsLoading(false);
-            }
-        };
-
-        fetchAllData();
-    }, [currentUser, navigate]);
-    
-    const handleRoleChange = async (targetUserId: string, newRole: UserRole) => {
-        const originalUsers = [...users];
-        setUsers(users.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
-        
-        const updatedUser = await ApiService.updateUserRole(targetUserId, { role: newRole });
-        if (!updatedUser) {
-            alert('Failed to update user role.');
-            setUsers(originalUsers);
-        }
-    };
-
-    const handleDeleteNovel = async (novelId: string) => {
-        if (window.confirm('Are you sure you want to permanently delete this novel and all its chapters? This is a critical action.')) {
-            const { success } = await ApiService.deleteNovel(novelId);
-            if (success) {
-                setNovels(prev => prev.filter(n => n.id !== novelId));
-                removeNovelFromList(novelId);
-            } else {
-                alert('Failed to delete the novel.');
-            }
-        }
-    };
-    
-    const canChangeRole = (targetUser: User): boolean => {
-        if (!currentUser || currentUser.id === targetUser.id) return false;
-        if (currentUser.role === UserRole.OWNER) return true;
-        if (currentUser.role === UserRole.ADMIN) {
-            return !(targetUser.role === UserRole.OWNER || targetUser.role === UserRole.ADMIN);
-        }
-        return false;
-    };
-
-    const TabButton = ({ tab, children }: { tab: 'users' | 'novels', children: ReactNode }) => (
-        <button
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 font-semibold border-b-2 transition-colors ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-        >
-            {children}
-        </button>
-    );
-
-    return (
-        <div className="container mx-auto px-4 py-8">
-            <h1 className="text-3xl font-bold mb-6">Admin Panel</h1>
-            <div className="mb-4 border-b border-gray-200 dark:border-gray-700">
-                <TabButton tab="users">User Management</TabButton>
-                <TabButton tab="novels">Novel Management</TabButton>
-            </div>
-            
-            {activeTab === 'users' && (
-                <div>
-                    {isUsersLoading ? <div className="text-center py-10">Loading users...</div> :
-                     userError ? <p className="text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md mb-4">{userError}</p> :
-                     <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead className="bg-gray-100 dark:bg-gray-800">
-                                <tr>
-                                    <th className="p-4 font-semibold">Username</th>
-                                    <th className="p-4 font-semibold">Email</th>
-                                    <th className="p-4 font-semibold">Role</th>
-                                    <th className="p-4 font-semibold">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {users.map(user => (
-                                    <tr key={user.id} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
-                                        <td className="p-4">{user.username}</td>
-                                        <td className="p-4">{user.email}</td>
-                                        <td className="p-4 capitalize">{user.role.toLowerCase()}</td>
-                                        <td className="p-4">
-                                            <Select 
-                                                value={user.role}
-                                                onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
-                                                disabled={!canChangeRole(user)}
-                                                className="w-40"
-                                            >
-                                                {Object.values(UserRole).map(role => (
-                                                    <option key={role} value={role}>{role}</option>
-                                                ))}
-                                            </Select>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    }
-                </div>
-            )}
-            {activeTab === 'novels' && (
-                <div>
-                    {isNovelsLoading ? <div className="text-center py-10">Loading novels...</div> :
-                     novelError ? <p className="text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md mb-4">{novelError}</p> :
-                     <div className="bg-light-surface dark:bg-dark-surface rounded-lg shadow-md overflow-x-auto">
-                        <table className="w-full text-left">
-                           <thead className="bg-gray-100 dark:bg-gray-800">
-                                <tr>
-                                    <th className="p-4 font-semibold">Title</th>
-                                    <th className="p-4 font-semibold">Author</th>
-                                    <th className="p-4 font-semibold">Status</th>
-                                    <th className="p-4 font-semibold">Actions</th>
-                                </tr>
-                            </thead>
-                             <tbody>
-                                {novels.map(novel => (
-                                    <tr key={novel.id} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
-                                        <td className="p-4">{novel.title}</td>
-                                        <td className="p-4">{novel.authorName}</td>
-                                        <td className="p-4 capitalize">{novel.status}</td>
-                                        <td className="p-4">
-                                            <Button variant="danger" onClick={() => handleDeleteNovel(novel.id)} className="text-sm !py-1 !px-2">
-                                                Delete
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    }
-                </div>
-            )}
-        </div>
-    );
-};
-
-
-const AppRouter = () => {
-  return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/search" element={<SearchResultsPage />} />
-      <Route path="/novel/:id" element={<NovelDetailPage />} />
-      <Route path="/read/:novelId/:chapterId" element={<ReaderPage />} />
-      <Route path="/user/:userId" element={<ProfilePage />} />
-      <Route path="/contact" element={<ContactPage />} />
-      <Route path="/changelog" element={<ChangelogPage />} />
-
-      {/* Settings Route */}
-      <Route path="/settings" element={<SettingsPage />} />
-
-      {/* Authoring Routes */}
-      <Route path="/my-works" element={<MyWorksPage />} />
-      <Route path="/edit-novel" element={<EditNovelPage />} />
-      <Route path="/edit-novel/:novelId" element={<EditNovelPage />} />
-      <Route path="/manage-chapters/:novelId" element={<ManageChaptersPage />} />
-      <Route path="/edit-chapter/:novelId" element={<EditChapterPage />} />
-      <Route path="/edit-chapter/:novelId/:chapterId" element={<EditChapterPage />} />
-      
-      {/* Admin Route */}
-      <Route path="/admin-panel" element={<AdminPanelPage />} />
-    </Routes>
-  );
-};
-
-
-// --- APP COMPONENT --- //
-const App = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [loading, setLoading] = useState<boolean>(true);
-
-  useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-    
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setLoading(false);
-      setIsAuthenticated(!!session);
-
-      if (session?.user) {
-        ApiService.getUser(session.user.id)
-          .then((profile) => {
-            if (profile) {
-              setUser(profile);
-            } else {
-              console.warn("No profile found for authenticated user. Logging out.");
-              supabase.auth.signOut();
-            }
-          })
-          .catch((error) => {
-            console.error("Error fetching user profile:", error);
-            supabase.auth.signOut();
-          });
-      } else {
-        setUser(null);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const login = async (email: string, pass: string): Promise<boolean> => {
-    if (!supabase) return false;
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    return !error;
-  };
-  
-  const signup = async (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string): Promise<{ success: boolean; message: string; }> => {
-    if (!supabase) return { success: false, message: 'Database client not initialized.' };
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password: pass,
-      options: {
-        data: {
-          username,
-          role,
-          pen_name: penName || '',
-          bio: bio || '',
-          profile_picture: `https://picsum.photos/seed/newUser${Date.now()}/100/100`,
-        }
-      }
-    });
-
-    if (error) {
-      return { success: false, message: error.message };
-    }
-    
-    if (data.user) {
-        return { success: true, message: data.session ? 'Signup successful!' : 'Signup successful! Please check your email for a verification link.' };
-    }
-    
-    return { success: false, message: 'An unknown error occurred during sign up.' };
-  };
-
-  const logout = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    setUser(null);
-    setIsAuthenticated(false);
-  };
-  
-  const updateCurrentUser = (updates: Partial<User>) => {
-    setUser(prevUser => {
-        if (!prevUser) return null;
-        return { ...prevUser, ...updates };
-    });
-  };
-
-  const authContextValue = {
-    user,
-    isAuthenticated,
-    login,
-    signup,
-    logout,
-    showAuthModal: () => setIsAuthModalOpen(true),
-    updateCurrentUser,
-  };
-  
+export default function App() {
   if (!areSupabaseCredentialsSet) {
     return <SupabaseCredentialsWarning />;
   }
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-screen bg-light-bg dark:bg-dark-bg text-light-text dark:text-dark-text">Loading...</div>;
-  }
-  
   return (
-    <AuthContext.Provider value={authContextValue}>
+    <HashRouter>
       <NotificationProvider>
         <NovelsProvider>
-          <HashRouter>
-            <div className="flex flex-col min-h-screen font-sans text-light-text dark:text-dark-text">
-              <Header />
-              <main className="flex-grow">
-                <AppRouter />
-              </main>
-              <Footer />
-            </div>
-            <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
-          </HashRouter>
+          <AuthProvider>
+            <Layout>
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/novel/:id" element={<NovelDetailPage />} />
+                <Route path="/read/:novelId/:chapterId" element={<ReaderPage />} />
+                <Route path="/user/:userId" element={<ProfilePage />} />
+                <Route path="/search" element={<SearchResultsPage />} />
+                
+                {/* Authoring Routes */}
+                <Route path="/my-works" element={<MyWorksPage />} />
+                <Route path="/edit-novel" element={<EditNovelPage />} />
+                <Route path="/edit-novel/:novelId" element={<EditNovelPage />} />
+                <Route path="/manage-chapters/:novelId" element={<ManageChaptersPage />} />
+                <Route path="/edit-chapter/:novelId" element={<EditChapterPage />} />
+                <Route path="/edit-chapter/:novelId/:chapterId" element={<EditChapterPage />} />
+                
+                {/* Static & System Routes */}
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/changelog" element={<ChangelogPage />} />
+              </Routes>
+            </Layout>
+          </AuthProvider>
         </NovelsProvider>
       </NotificationProvider>
-    </AuthContext.Provider>
+    </HashRouter>
   );
-};
-
-export default App;
+}

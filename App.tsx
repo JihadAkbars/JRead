@@ -10,6 +10,7 @@ import { BookOpenIcon, SearchIcon, UserIcon, SunIcon, MoonIcon, ArrowLeftIcon, A
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
   login: (email: string, pass: string) => Promise<boolean>;
   signup: (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string) => Promise<{ success: boolean; message: string; }>;
   logout: () => Promise<void>;
@@ -43,8 +44,7 @@ export const useNovels = () => {
     return context;
 };
 
-// Fix: Changed component to React.FC to correctly handle children prop.
-const NovelsProvider: React.FC = ({ children }) => {
+const NovelsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [novels, setNovels] = useState<Novel[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -97,7 +97,6 @@ export const useNotification = () => {
     return context;
 };
 
-// Fix: Changed component to React.FC to correctly handle built-in props like 'key'.
 const NotificationToast: React.FC<{ notification: Notification }> = ({ notification }) => {
     const { type, message } = notification;
 
@@ -131,8 +130,7 @@ const NotificationContainer = ({ notifications }: { notifications: Notification[
     );
 };
 
-// Fix: Changed component to React.FC to correctly handle children prop.
-const NotificationProvider: React.FC = ({ children }) => {
+const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
 
     const addNotification = (message: string, type: NotificationType) => {
@@ -153,16 +151,17 @@ const NotificationProvider: React.FC = ({ children }) => {
 };
 
 // --- AUTH PROVIDER --- //
-// Fix: Changed component to React.FC to correctly handle children prop.
-const AuthProvider: React.FC = ({ children }) => {
+const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
     useEffect(() => {
-        if (!supabase) return;
+        if (!supabase) {
+            setIsLoading(false);
+            return;
+        }
 
-        // onAuthStateChange is called upon initial load, sign in, sign out, etc.
-        // It's the single source of truth for the user's auth state and prevents logout on refresh.
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 if (session) {
@@ -171,6 +170,7 @@ const AuthProvider: React.FC = ({ children }) => {
                 } else {
                     setUser(null);
                 }
+                setIsLoading(false);
             }
         );
 
@@ -238,6 +238,7 @@ const AuthProvider: React.FC = ({ children }) => {
     const value: AuthContextType = {
         user,
         isAuthenticated: !!user,
+        isLoading,
         login,
         signup,
         logout,
@@ -1234,7 +1235,6 @@ const ProfilePage = () => {
     const canViewBookmarks = isOwner || (profileUser.showBookmarks ?? false);
     const canViewLikes = isOwner || (profileUser.showLikes ?? false);
 
-    // Fix: Replaced `typeof activeTab` with the explicit string literal union type to avoid incorrect type inference.
     const TabButton = ({ tab, currentTab, children }: { tab: 'creations' | 'bookmarks' | 'likes', currentTab: 'creations' | 'bookmarks' | 'likes', children: ReactNode }) => (
         <button 
             onClick={() => setActiveTab(tab)}
@@ -2147,8 +2147,7 @@ const EditChapterPage = () => {
         setContent(e.target.value);
     };
 
-    // Fix: Changed component to React.FC to correctly handle children prop.
-    const TabButton: React.FC<{ isActive: boolean, onClick: () => void }> = ({ isActive, onClick, children }) => (
+    const TabButton: React.FC<{ isActive: boolean, onClick: () => void, children: ReactNode }> = ({ isActive, onClick, children }) => (
         <button
             type="button"
             onClick={onClick}
@@ -2392,8 +2391,7 @@ const SettingsPage = () => {
 
 // --- APP LAYOUT & ROUTING --- //
 
-// Fix: Changed component to React.FC to correctly handle children prop.
-const Layout: React.FC = ({ children }) => (
+const Layout: React.FC<{ children: ReactNode }> = ({ children }) => (
     <div className="flex flex-col min-h-screen font-sans text-light-text dark:text-dark-text">
         <Header />
         <main className="flex-grow">{children}</main>
@@ -2401,18 +2399,24 @@ const Layout: React.FC = ({ children }) => (
     </div>
 );
 
-export default function App() {
-  if (!areSupabaseCredentialsSet) {
-    return <SupabaseCredentialsWarning />;
-  }
+const AppRouter = () => {
+    const { isLoading } = useAuth();
 
-  return (
-    <HashRouter>
-      <NotificationProvider>
-        <NovelsProvider>
-          <AuthProvider>
-            <Layout>
-              <Routes>
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-screen bg-light-bg dark:bg-dark-bg">
+                <svg className="animate-spin h-10 w-10 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="ml-4 text-lg font-semibold text-gray-700 dark:text-gray-300">Loading J Read...</span>
+            </div>
+        );
+    }
+
+    return (
+        <Layout>
+            <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/novel/:id" element={<NovelDetailPage />} />
                 <Route path="/read/:novelId/:chapterId" element={<ReaderPage />} />
@@ -2432,8 +2436,22 @@ export default function App() {
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/contact" element={<ContactPage />} />
                 <Route path="/changelog" element={<ChangelogPage />} />
-              </Routes>
-            </Layout>
+            </Routes>
+        </Layout>
+    );
+};
+
+export default function App() {
+  if (!areSupabaseCredentialsSet) {
+    return <SupabaseCredentialsWarning />;
+  }
+
+  return (
+    <HashRouter>
+      <NotificationProvider>
+        <NovelsProvider>
+          <AuthProvider>
+            <AppRouter />
           </AuthProvider>
         </NovelsProvider>
       </NotificationProvider>

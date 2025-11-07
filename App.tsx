@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -46,7 +45,7 @@ export const useNovels = () => {
 };
 
 const NovelsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const { user, authReady } = useAuth();
+    const { authReady, isAuthenticated } = useAuth();
     const [novels, setNovels] = useState<Novel[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -69,7 +68,7 @@ const NovelsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
             }
         };
         fetchNovels();
-    }, [authReady, user]);
+    }, [authReady, isAuthenticated]);
 
     const updateNovelInList = (novelId: string, updatedData: Partial<Novel>) => {
         setNovels(currentNovels =>

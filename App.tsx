@@ -12,7 +12,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, pass: string) => Promise<boolean>;
   signup: (username: string, email: string, pass: string, role: UserRole, penName?: string, bio?: string) => Promise<{ success: boolean; message: string; }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   showAuthModal: () => void;
   updateCurrentUser: (updates: Partial<User>) => void;
   resetPassword: (email: string) => Promise<{ error: any }>;
@@ -513,6 +513,12 @@ const Header = () => {
     }
   };
   
+  const handleLogout = async () => {
+    await logout();
+    setIsProfileDropdownOpen(false);
+    navigate('/');
+  };
+
   const isAuthor = user?.role === UserRole.AUTHOR || user?.role === UserRole.ADMIN || user?.role === UserRole.OWNER;
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.OWNER;
 
@@ -590,7 +596,7 @@ const Header = () => {
                         </Link>
                     )}
                     <button 
-                        onClick={() => { logout(); setIsProfileDropdownOpen(false); navigate('/'); }} 
+                        onClick={handleLogout} 
                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
                         Logout

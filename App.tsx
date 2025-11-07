@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -45,10 +46,16 @@ export const useNovels = () => {
 };
 
 const NovelsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const { user, authReady } = useAuth();
     const [novels, setNovels] = useState<Novel[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!authReady) {
+            setLoading(true);
+            return;
+        }
+
         const fetchNovels = async () => {
             setLoading(true);
             try {
@@ -56,12 +63,13 @@ const NovelsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
                 setNovels(data);
             } catch (error) {
                 console.error("Failed to fetch novels:", error);
+                setNovels([]); // Clear novels on error
             } finally {
                 setLoading(false);
             }
         };
         fetchNovels();
-    }, []);
+    }, [authReady, user]);
 
     const updateNovelInList = (novelId: string, updatedData: Partial<Novel>) => {
         setNovels(currentNovels =>
@@ -852,7 +860,7 @@ const HomePage = () => {
       </div>
 
       {loading ? (
-        <p className="text-center py-10">Loading novels...</p> 
+        <PageLoader message="Loading novels..." />
       ) : (
         <div>
             <h2 className="text-3xl font-bold mb-6 text-light-text dark:text-dark-text">
@@ -1034,7 +1042,7 @@ const NovelDetailPage = () => {
          }
     };
 
-    if (isLoading) return <div className="text-center py-10">Loading novel...</div>;
+    if (isLoading) return <PageLoader message="Loading novel..." />;
     if (!novel) return <div className="text-center py-10">Novel not found.</div>;
 
     const firstChapter = novel.chapters?.[0];
@@ -1192,7 +1200,7 @@ const ReaderPage = () => {
         await ApiService.setUserNovelProgress(user.id, novelId, chapter.chapterNumber);
     };
 
-    if (!chapter || !novel) return <div className="text-center py-10">Loading chapter...</div>;
+    if (!chapter || !novel) return <PageLoader message="Loading chapter..." />;
 
     const isCurrentChapterBookmarked = bookmarkedChapter === currentChapterNumber;
 
@@ -1279,7 +1287,7 @@ const ProfilePage = () => {
         fetchProfileData();
     }, [userId]);
     
-    if (isLoading) return <div className="text-center py-10">Loading profile...</div>;
+    if (isLoading) return <PageLoader message="Loading profile..." />;
     if (!profileUser) return <div className="text-center py-10">User not found.</div>;
     
     const isOwner = loggedInUser?.id === profileUser.id;
@@ -1689,7 +1697,7 @@ const SearchResultsPage = () => {
                 Search Results {query && `for "${query}"`}
             </h1>
             {loading ? (
-                 <div className="text-center py-10">Searching...</div>
+                 <PageLoader message="Searching..." />
             ) : filteredNovels.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                     {filteredNovels.map(novel => <NovelCard key={novel.id} novel={novel} />)}
@@ -2527,11 +2535,11 @@ export default function App() {
   return (
     <HashRouter>
       <NotificationProvider>
-        <NovelsProvider>
-          <AuthProvider>
+        <AuthProvider>
+          <NovelsProvider>
             <AppRouter />
-          </AuthProvider>
-        </NovelsProvider>
+          </NovelsProvider>
+        </AuthProvider>
       </NotificationProvider>
     </HashRouter>
   );

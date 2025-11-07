@@ -162,41 +162,55 @@ const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
             return;
         }
 
-        // This function will be called by the listener and on initial load
-        const updateUserState = async (session: import('@supabase/supabase-js').Session | null) => {
-            if (session) {
-                const profile = await ApiService.getUser(session.user.id);
-                setUser(profile);
-            } else {
-                setUser(null);
+        let isMounted = true;
+
+        const fetchUserAndProfile = async (sessionUser: import('@supabase/supabase-js').User | null) => {
+            if (!sessionUser) {
+                if (isMounted) setUser(null);
+                return;
+            }
+
+            const profile = await ApiService.getUser(sessionUser.id);
+            if (isMounted) {
+                if (profile) {
+                    setUser(profile);
+                } else {
+                    // Fallback for when a user exists in auth but not in our profiles table.
+                    // This can happen if the DB trigger for profile creation is missing or failed.
+                    console.warn(`No profile found for user ${sessionUser.id}. Using fallback data from session.`);
+                    setUser({
+                        id: sessionUser.id,
+                        email: sessionUser.email ?? '',
+                        username: sessionUser.user_metadata.username || sessionUser.email?.split('@')[0] || 'New User',
+                        role: sessionUser.user_metadata.role || UserRole.USER,
+                        profilePicture: sessionUser.user_metadata.profile_picture || `https://api.dicebear.com/8.x/initials/svg?seed=${sessionUser.id}`,
+                        penName: sessionUser.user_metadata.pen_name,
+                        bio: sessionUser.user_metadata.bio,
+                    });
+                }
             }
         };
 
-        // Check the initial session state when the app loads
-        const initializeSession = async () => {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                await updateUserState(session);
-            } catch (error) {
-                console.error("Error during session initialization:", error);
-                setUser(null); // Ensure user is null on error
-            } finally {
-                // This is crucial: always set loading to false after the initial check.
-                setIsLoading(false);
-            }
+        const initialize = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            // Once session is checked, we are done with initial loading.
+            if (isMounted) setIsLoading(false);
+            // Now, fetch the profile if a session exists.
+            await fetchUserAndProfile(session?.user || null);
         };
 
-        initializeSession();
+        initialize();
 
-        // Listen for subsequent auth state changes
-        const { data: authListener } = supabase.auth.onAuthStateChange(
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (_event, session) => {
-                await updateUserState(session);
+                // On auth change (login/logout), fetch the new user profile.
+                await fetchUserAndProfile(session?.user || null);
             }
         );
 
         return () => {
-            authListener?.subscription.unsubscribe();
+            isMounted = false;
+            subscription?.unsubscribe();
         };
     }, []);
 

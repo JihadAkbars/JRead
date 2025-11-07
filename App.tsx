@@ -1,3 +1,7 @@
+
+
+
+
 import React, { useState, useEffect, createContext, useContext, ReactNode, useRef, ComponentPropsWithoutRef } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, areSupabaseCredentialsSet } from './supabaseClient';
@@ -164,13 +168,18 @@ const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                if (session) {
-                    const profile = await ApiService.getUser(session.user.id);
-                    setUser(profile);
-                } else {
-                    setUser(null);
+                try {
+                    if (session) {
+                        const profile = await ApiService.getUser(session.user.id);
+                        setUser(profile);
+                    } else {
+                        setUser(null);
+                    }
+                } catch (error) {
+                    console.error("Error in auth state change handler:", error);
+                } finally {
+                    setIsLoading(false);
                 }
-                setIsLoading(false);
             }
         );
 
